@@ -10,8 +10,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/util/test/test_ktime.c,v 1.5 2003/07/15 23:17:18 shadow Exp $");
 
 #include "ktime.h"
 

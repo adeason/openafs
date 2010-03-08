@@ -11,8 +11,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/ptserver/db_verify.c,v 1.16.2.6 2008/10/27 23:54:10 shadow Exp $");
 
 /*
  *                      (3) Define a structure, idused, instead of an

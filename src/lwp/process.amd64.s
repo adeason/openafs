@@ -1,4 +1,4 @@
-/* $Id: process.amd64.s,v 1.1.2.2 2008/12/15 20:38:22 shadow Exp $ */
+/* $Id$ */
 
 /*
  * Copyright (c) 2003,2005 Kungliga Tekniska Högskolan
@@ -33,8 +33,6 @@
  * SUCH DAMAGE.
  */
 
-#undef RCSID
-
 /* x86_64 Assembly
  *
  * By Harald Barth <haba@stacken.kth.se> after looking
@@ -49,6 +47,10 @@
 
 #include <lwp_elf.h>
 	
+#if defined(__linux__) && defined(__ELF__)
+	.section .note.GNU-stack,"",%progbits
+#endif
+
 	.file "process.s"
 	.data
 	.text
@@ -85,7 +87,7 @@ ENTRY(savecontext)
 	movq	%rsi, area1(%rbp)	/* i multiples of 24, so 32 it is) */
 	movq	%rdx, newsp(%rbp)	/* and copy them there. */
 
-	movq	PRE_Block@GOTPCREL(%rip), %rax
+	movq	_C_LABEL(PRE_Block)@GOTPCREL(%rip), %rax
 	movl	$1,(%rax)		/* Do not allow any interrupts */
 
 	pushq	%rsp			/* Push all registers onto the stack */
@@ -151,7 +153,7 @@ ENTRY(returnto)
 	popq	%rax
 	popq	%rsp			/* See savecontext */
 
-	movq    PRE_Block@GOTPCREL(%rip), %rax
+	movq    _C_LABEL(PRE_Block)@GOTPCREL(%rip), %rax
 	movl    $0,(%rax)	
 	addq	$32, %rsp		/* We did rsp-32 above, correct that */
 	popq    %rbp

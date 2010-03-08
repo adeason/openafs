@@ -13,8 +13,6 @@
 #include <afsconfig.h>
 #include "afs/param.h"
 
-RCSID
-    ("$Header: /cvs/openafs/src/afs/afs_segments.c,v 1.16.2.8 2009/06/24 21:30:14 shadow Exp $");
 
 #include "afs/sysincludes.h"	/*Standard vendor system headers */
 #include "afsincludes.h"	/*AFS-based standard headers */
@@ -933,7 +931,7 @@ afs_TruncateAllSegments(register struct vcache *avc, afs_size_t alen,
     register struct dcache *tdc;
     register afs_int32 code;
     register afs_int32 index;
-    afs_int32 newSize;
+    afs_size_t newSize;
 
     int dcCount, dcPos;
     struct dcache **tdcArray;
@@ -1037,12 +1035,12 @@ afs_TruncateAllSegments(register struct vcache *avc, afs_size_t alen,
 	if (newSize < 0)
 	    newSize = 0;
 	ObtainSharedLock(&tdc->lock, 672);
-	if (newSize < tdc->f.chunkBytes) {
+	if (newSize < tdc->f.chunkBytes && newSize < MAX_AFS_UINT32) {
 	    UpgradeSToWLock(&tdc->lock, 673);
 	    tfile = afs_CFileOpen(tdc->f.inode);
-	    afs_CFileTruncate(tfile, newSize);
+	    afs_CFileTruncate(tfile, (afs_int32)newSize);
 	    afs_CFileClose(tfile);
-	    afs_AdjustSize(tdc, newSize);
+	    afs_AdjustSize(tdc, (afs_int32)newSize);
 	    if (alen < tdc->validPos) {
                 if (alen < AFS_CHUNKTOBASE(tdc->f.chunk))
                     tdc->validPos = 0;

@@ -21,8 +21,6 @@
 #include <afsconfig.h>
 #include "afs/param.h"
 
-RCSID
-    ("$Header: /cvs/openafs/src/afs/OBSD/osi_vm.c,v 1.2.2.1 2008/01/03 17:15:19 rees Exp $");
 
 #include "afs/sysincludes.h"	/* Standard vendor system headers */
 #include "afs/afsincludes.h"	/* Afs-based standard headers */

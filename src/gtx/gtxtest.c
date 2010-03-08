@@ -10,8 +10,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/gtx/gtxtest.c,v 1.6.2.3 2007/11/26 21:21:52 shadow Exp $");
 
 #include <string.h>
 

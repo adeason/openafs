@@ -15,8 +15,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/kauth/admin_tools.c,v 1.16.2.5 2007/10/31 04:13:39 shadow Exp $");
 
 #include <afs/stds.h>
 #include <afs/debug.h>

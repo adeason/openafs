@@ -16,8 +16,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/libacl/netprocs.c,v 1.6 2003/07/15 23:15:18 shadow Exp $");
 
 #include <sys/types.h>
 #ifdef AFS_NT40_ENV

@@ -477,7 +477,6 @@ AC_DEFUN([LINUX_KERNEL_POSIX_LOCK_FILE_WAIT_ARG], [
       ac_cv_linux_kernel_posix_lock_file_wait_arg=no)])
   AC_MSG_RESULT($ac_cv_linux_kernel_posix_lock_file_wait_arg)])
 
-
 AC_DEFUN([LINUX_KERNEL_SOCK_CREATE], [
   AC_MSG_CHECKING([for 5th argument in sock_create found in some SELinux kernels])
   AC_CACHE_VAL([ac_cv_linux_kernel_sock_create_v], [
@@ -950,6 +949,24 @@ AC_DEFUN([LINUX_KMEM_CACHE_CREATE_TAKES_DTOR], [
       ac_cv_linux_kmem_cache_create_takes_dtor=no)])
   AC_MSG_RESULT($ac_cv_linux_kmem_cache_create_takes_dtor)])
 
+AC_DEFUN([LINUX_KMEM_CACHE_CREATE_CTOR_TAKES_VOID], [
+  AC_MSG_CHECKING([whether kmem_cache_create constructor function takes a void pointer argument])
+  AC_CACHE_VAL([ac_cv_linux_kmem_cache_create_ctor_takes_void], [
+    save_CPPFLAGS="$CPPFLAGS"
+    CPPFLAGS="$CPPFLAGS -Werror"
+    AC_TRY_KBUILD(
+[#include <linux/slab.h>],
+[void _ctor(void *v) { };
+kmem_cache_create(NULL, 0, 0, 0, _ctor);],
+      ac_cv_linux_kmem_cache_create_ctor_takes_void=yes,
+      ac_cv_linux_kmem_cache_create_ctor_takes_void=no)
+    CPPFLAGS="$save_CPPFLAGS"
+])
+  AC_MSG_RESULT($ac_cv_linux_kmem_cache_create_ctor_takes_void)
+  if test "x$ac_cv_linux_kmem_cache_create_ctor_takes_void" = "xyes"; then
+    AC_DEFINE([KMEM_CACHE_CTOR_TAKES_VOID], 1, [define if kmem_cache_create constructor function takes a single void pointer argument])
+  fi])
+
 AC_DEFUN([LINUX_FS_STRUCT_FOP_HAS_SENDFILE], [
   AC_MSG_CHECKING([for sendfile in struct file_operations])
   AC_CACHE_VAL([ac_cv_linux_fs_struct_fop_has_sendfile], [
@@ -1102,7 +1119,8 @@ AC_DEFUN([LINUX_HAVE_WRITE_BEGIN_AOP], [
   AC_CACHE_VAL([ac_cv_linux_write_begin], [
     AC_TRY_KBUILD(
 [#include <linux/fs.h>],
-[simple_write_begin(NULL, NULL, 0, 0, 0, NULL, NULL);],
+[struct address_space_operations _aop;
+_aop.write_begin = NULL;],
       ac_cv_linux_write_begin=yes,
       ac_cv_linux_write_begin=no)])
   AC_MSG_RESULT($ac_cv_linux_write_begin)
@@ -1172,3 +1190,60 @@ printk("%s", key_type_keyring.name);
     AC_DEFINE([EXPORTED_KEY_TYPE_KEYRING], 1, [define if key_type_keyring is exported])
   fi]) 
 
+AC_DEFUN([LINUX_FS_STRUCT_SUPER_BLOCK_HAS_S_BDI], [
+  AC_MSG_CHECKING([if struct super_block has s_bdi])
+  AC_CACHE_VAL([ac_cv_linux_struct_super_block_has_s_bdi], [
+    AC_TRY_KBUILD(
+[#include <linux/fs.h>],
+[struct super_block _sb;
+_sb.s_bdi= NULL;],
+      ac_cv_linux_struct_super_block_has_s_bdi=yes,
+      ac_cv_linux_struct_super_block_has_s_bdi=no)])
+  AC_MSG_RESULT($ac_cv_linux_struct_super_block_has_s_bdi)
+  if test "x$ac_cv_linux_struct_super_block_has_s_bdi" = "xyes"; then
+    AC_DEFINE([STRUCT_SUPER_BLOCK_HAS_S_BDI], 1, [define if struct super_block has an s_bdi member])
+  fi])
+
+AC_DEFUN([LINUX_POSIX_TEST_LOCK_RETURNS_CONFLICT], [
+  AC_MSG_CHECKING([if posix_test_lock returns a struct file_lock])
+  AC_CACHE_VAL([ac_cv_linux_posix_test_lock_returns_conflict], [
+    AC_TRY_KBUILD(
+[#include <linux/fs.h>],
+[struct file_lock *lock;
+ struct file * file;
+lock = posix_test_lock(file, lock);],
+      ac_cv_linux_posix_test_lock_returns_conflict=yes,
+      ac_cv_linux_posix_test_lock_returns_conflict=no)])
+  AC_MSG_RESULT($ac_cv_linux_posix_test_lock_returns_conflict)
+  if test "x$ac_cv_linux_posix_test_lock_returns_conflict" = "xyes"; then
+    AC_DEFINE([POSIX_TEST_LOCK_RETURNS_CONFLICT], 1, [define if posix_test_lock returns the conflicting lock])
+  fi])
+
+AC_DEFUN([LINUX_POSIX_TEST_LOCK_CONFLICT_ARG], [
+  AC_MSG_CHECKING([if posix_test_lock takes a conflict argument])
+  AC_CACHE_VAL([ac_cv_linux_posix_test_lock_conflict_arg], [
+    AC_TRY_KBUILD(
+[#include <linux/fs.h>],
+[ struct file_lock *lock;
+  struct file *file;
+  posix_test_lock(file, lock, lock);],
+      ac_cv_linux_posix_test_lock_conflict_arg=yes,
+      ac_cv_lonuc_posix_test_lock_conflict_arg=no)])
+  AC_MSG_RESULT($ac_cv_linux_posix_test_lock_conflict_arg)
+  if test "x$ac_cv_linux_posix_test_lock_conflict_arg" = "xyes"; then
+    AC_DEFINE([POSIX_TEST_LOCK_CONFLICT_ARG], 1, [define if posix_test_lock takes a conflict argument])
+  fi])
+
+AC_DEFUN([LINUX_STRUCT_CTL_TABLE_HAS_CTL_NAME], [
+  AC_MSG_CHECKING([if struct ctl_table has ctl_name])
+  AC_CACHE_VAL([ac_cv_linux_struct_ctl_table_has_ctl_name], [
+    AC_TRY_KBUILD(
+[#include <linux/sysctl.h>],
+[struct ctl_table _t;
+_t.ctl_name = 0;],
+      ac_cv_linux_struct_ctl_table_has_ctl_name=yes,
+      ac_cv_linux_struct_ctl_table_has_ctl_name=no)])
+  AC_MSG_RESULT($ac_cv_linux_struct_ctl_table_has_ctl_name)
+  if test "x$ac_cv_linux_struct_ctl_table_has_ctl_name" = "xyes"; then
+    AC_DEFINE([STRUCT_CTL_TABLE_HAS_CTL_NAME], 1, [define if struct ctl_table has a ctl_name member])
+  fi])

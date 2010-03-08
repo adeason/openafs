@@ -10,8 +10,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/butc/tcstatus.c,v 1.6.2.1 2007/10/30 15:23:50 shadow Exp $");
 
 #include <sys/types.h>
 #ifdef AFS_NT40_ENV

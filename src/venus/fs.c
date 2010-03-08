@@ -10,8 +10,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/venus/fs.c,v 1.24.2.14 2009/02/17 03:59:53 shadow Exp $");
 
 #include <afs/afs_args.h>
 #include <rx/xdr.h>
@@ -651,11 +649,11 @@ QuickPrintStatus(VolumeStatus * status, char *name)
     printf("%-25.25s", name);
 
     if (status->MaxQuota != 0) {
-	printf("%10d%10d", status->MaxQuota, status->BlocksInUse);
+	printf(" %10d %10d", status->MaxQuota, status->BlocksInUse);
 	QuotaUsed =
 	    ((((double)status->BlocksInUse) / status->MaxQuota) * 100.0);
     } else {
-	printf("  no limit%10d", status->BlocksInUse);
+	printf("   no limit %10d", status->BlocksInUse);
     }
     if (QuotaUsed > 90.0) {
 	printf("%5.0f%%<<", QuotaUsed);
@@ -1432,8 +1430,8 @@ ListQuotaCmd(struct cmd_syndesc *as, void *arock)
     char *name;
     int error = 0;
 
-    printf("%-25s%-10s%-10s%-7s%-11s\n", "Volume Name", "     Quota",
-	   "      Used", " %Used", "  Partition");
+    printf("%-25s%-11s%-11s%-7s%-11s\n", "Volume Name", "      Quota",
+	   "       Used", " %Used", "  Partition");
     SetDotDefault(&as->parms[0].items);
     for (ti = as->parms[0].items; ti; ti = ti->next) {
 	/* once per file */

@@ -19,8 +19,6 @@
 #include <security/pam_appl.h>
 #include <security/pam_modules.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/pam/afs_setcred.c,v 1.13.2.3 2009/04/27 18:33:04 shadow Exp $");
 
 #include <sys/param.h>
 #include <afs/kautils.h>
@@ -157,8 +155,8 @@ pam_sm_setcred(pam_handle_t * pamh, int flags, int argc, const char **argv)
     /* enhanced: use "ignore_uid <number>" to specify the largest uid
      * which should be ignored by this module
      */
-#if	defined(AFS_HPUX_ENV)
-#if     defined(AFS_HPUX110_ENV)
+#if	defined(AFS_HPUX_ENV) || defined(AFS_DARWIN100_ENV)
+#if     defined(AFS_HPUX110_ENV) || defined(AFS_DARWIN100_ENV)
     i = getpwnam_r(user, &unix_pwd, upwd_buf, sizeof(upwd_buf), &upwd);
 #else /* AFS_HPUX110_ENV */
     i = getpwnam_r(user, &unix_pwd, upwd_buf, sizeof(upwd_buf));

@@ -10,8 +10,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/kauth/kadatabase.c,v 1.10.2.3 2007/11/26 21:21:52 shadow Exp $");
 
 #include <sys/types.h>
 #ifdef AFS_NT40_ENV

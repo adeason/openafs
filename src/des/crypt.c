@@ -37,8 +37,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/des/crypt.c,v 1.13.2.2 2006/07/25 14:46:18 shadow Exp $");
 
 #ifdef AFS_NT40_ENV
 #include <windows.h>
@@ -83,16 +81,6 @@ RCSID
 #if CHAR_BITS != 8
 #error C_block structure assumes 8 bit characters
 #endif
-#endif
-
-/*
- * define "LONG_IS_32_BITS" only if sizeof(long)==4.
- * This avoids use of bit fields (your compiler may be sloppy with them).
- */
-
-/* XXX shouldn't this be !AFS_64BIT_ENV ? */
-#if !defined(cray) && !defined(AFS_ALPHA_LINUX20_ENV) && !defined(AFS_IA64_LINUX20_ENV) && !defined(AFS_AMD64_LINUX20_ENV) && !defined(AFS_PPC64_LINUX20_ENV) & !defined(AFS_S390X_LINUX20_ENV)
-#define	LONG_IS_32_BITS
 #endif
 
 /*
@@ -249,7 +237,7 @@ STATIC prtab();
 typedef union {
     unsigned char b[8];
     struct {
-#if defined(LONG_IS_32_BITS)
+#if (SIZEOF_LONG == 4)
 	/* long is often faster than a 32-bit bit field */
 	long i0;
 	long i1;

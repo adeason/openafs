@@ -10,8 +10,6 @@
 #include <afsconfig.h>
 #include "afs/param.h"
 
-RCSID
-    ("$Header: /cvs/openafs/src/afs/afs_axscache.c,v 1.7 2003/07/15 23:14:11 shadow Exp $");
 
 #include "afs/sysincludes.h"	/* Standard vendor system headers */
 #include "afsincludes.h"	/* Afs-based standard headers */

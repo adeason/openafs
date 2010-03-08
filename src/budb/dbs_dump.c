@@ -10,8 +10,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/budb/dbs_dump.c,v 1.11.2.1 2008/03/10 22:35:34 shadow Exp $");
 
 #ifdef AFS_NT40_ENV
 #include <winsock2.h>

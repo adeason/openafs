@@ -436,11 +436,12 @@ case $AFS_SYSNAME in
 		MT_CFLAGS='-DAFS_PTHREAD_ENV -pthread -D_REENTRANT ${XCFLAGS}'
 		MT_LIBS="-pthread"
 		PAM_CFLAGS="-O2 -pipe -fpic"
+		OPTMZ="-O2"
 		SHLIB_CFLAGS="-fpic"
 		SHLIB_LDFLAGS="-shared -Xlinker -x"
 		SHLIB_LINKER="${MT_CC} -shared"
 		TXLIBS="/usr/lib/libcurses.a"
-		XCFLAGS="-O2"
+		XCFLAGS=""
 		YACC="yacc"
 		;;
 
@@ -546,6 +547,26 @@ case $AFS_SYSNAME in
 		SHLIB_LINKER="${MT_CC} -dynamiclib"
 		SHLIB_SUFFIX="dylib"
 		RANLIB="ranlib -c"
+		;;
+
+	*_darwin_100)
+		AFSD_LDFLAGS="-F/System/Library/PrivateFrameworks -framework DiskArbitration -framework SystemConfiguration -framework IOKit -framework CoreFoundation"
+		LEX="lex -l"
+		MT_CFLAGS='-DAFS_PTHREAD_ENV -D_REENTRANT ${XCFLAGS} ${ARCHFLAGS}'
+		MT_LIBS="-lresolv"
+		KROOT=
+		KINCLUDES='-I$(KROOT)/System/Library/Frameworks/Kernel.framework/Headers'
+		LD="cc"
+		KERN_OPTMZ="-Os"
+		LWP_OPTMZ="-Os"
+		OPTMZ="-Os"
+		PAM_LIBS="-lpam"
+		REGEX_OBJ="regex.o"
+		TXLIBS="-lncurses"
+		EXTRA_VLIBOBJS="fstab.o"
+		SHLIB_LINKER="${MT_CC} -dynamiclib"
+		SHLIB_SUFFIX="dylib"
+		RANLIB="ranlib"
 		;;
 
 	ppc_linux*)

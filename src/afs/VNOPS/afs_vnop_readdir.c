@@ -22,8 +22,6 @@
 #include <afsconfig.h>
 #include "afs/param.h"
 
-RCSID
-    ("$Header: /cvs/openafs/src/afs/VNOPS/afs_vnop_readdir.c,v 1.24.2.8 2005/11/19 04:35:42 shadow Exp $");
 
 #include "afs/sysincludes.h"	/* Standard vendor system headers */
 #include "afsincludes.h"	/* Afs-based standard headers */

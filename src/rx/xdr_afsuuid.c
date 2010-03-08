@@ -14,8 +14,6 @@
 #include <afsconfig.h>
 #include "afs/param.h"
 
-RCSID
-    ("$Header: /cvs/openafs/src/rx/xdr_afsuuid.c,v 1.8.2.2 2005/04/03 18:15:51 shadow Exp $");
 
 #if defined(KERNEL) && !defined(UKERNEL)
 #ifdef AFS_LINUX20_ENV

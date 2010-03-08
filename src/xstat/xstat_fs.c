@@ -17,8 +17,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/xstat/xstat_fs.c,v 1.9.2.4 2008/03/10 22:35:37 shadow Exp $");
 
 #include "xstat_fs.h"		/*Interface for this module */
 #include <lwp.h>		/*Lightweight process package */

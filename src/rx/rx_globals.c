@@ -25,8 +25,6 @@
 #include <afs/param.h>
 #endif
 
-RCSID
-    ("$Header: /cvs/openafs/src/rx/rx_globals.c,v 1.8.2.3 2006/12/19 03:21:46 shadow Exp $");
 
 /* Enable data initialization when the header file is included */
 #define GLOBALSINIT(stuff) = stuff

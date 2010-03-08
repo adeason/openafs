@@ -12,8 +12,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/rxkad/test/stress_s.c,v 1.7 2003/07/15 23:16:47 shadow Exp $");
 
 #include <afs/stds.h>
 #include <stdio.h>

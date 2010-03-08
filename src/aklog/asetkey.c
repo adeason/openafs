@@ -1,5 +1,5 @@
 /*
- * $Id: asetkey.c,v 1.4.2.11 2009/06/03 05:41:59 shadow Exp $
+ * $Id$
  *
  * asetkey - Manipulates an AFS KeyFile
  *

@@ -12,8 +12,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/venus/cacheout.c,v 1.8.2.1 2007/10/31 04:13:49 shadow Exp $");
 
 #include <stdio.h>
 #include <string.h>

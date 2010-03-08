@@ -16,8 +16,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/lwp/preempt.c,v 1.16.2.2 2008/03/10 22:35:35 shadow Exp $");
 
 
 #include "lwp.h"

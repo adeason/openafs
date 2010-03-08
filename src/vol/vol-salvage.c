@@ -91,8 +91,6 @@ Vnodes with 0 inode pointers in RW volumes are now deleted.
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/vol/vol-salvage.c,v 1.41.2.20 2009/03/23 18:19:57 shadow Exp $");
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -1387,10 +1385,16 @@ SalvageFileSys1(struct DiskPartition64 *partP, VolumeId singleVolumeNumber)
 void
 DeleteExtraVolumeHeaderFile(register struct VolumeSummary *vsp)
 {
+    char path[64];
+    sprintf(path, "%s/%s", fileSysPath, vsp->fileName);
+
     if (!Showmode)
-	Log("The volume header file %s is not associated with any actual data (%sdeleted)\n", vsp->fileName, (Testing ? "would have been " : ""));
-    if (!Testing)
-	unlink(vsp->fileName);
+	Log("The volume header file %s is not associated with any actual data (%sdeleted)\n", path, (Testing ? "would have been " : ""));
+    if (!Testing) {
+	if (unlink(path)) {
+	    Log("Unable to unlink %s (errno = %d)\n", path, errno);
+	}
+    }
     vsp->fileName = 0;
 }
 
@@ -1718,7 +1722,8 @@ GetVolumeSummary(VolumeId singleVolumeNumber)
     struct dirent *dp;
 
     /* Get headers from volume directory */
-    if (chdir(fileSysPath) == -1 || (dirp = opendir(".")) == NULL)
+    dirp = opendir(fileSysPath);
+    if (dirp  == NULL)
 	Abort("Can't read directory %s; not salvaged\n", fileSysPath);
     if (!singleVolumeNumber) {
 	while ((dp = readdir(dirp))) {
@@ -1726,7 +1731,9 @@ GetVolumeSummary(VolumeId singleVolumeNumber)
 	    p = strrchr(dp->d_name, '.');
 	    if (p != NULL && strcmp(p, VHDREXT) == 0) {
 		int fd;
-		if ((fd = afs_open(dp->d_name, O_RDONLY)) != -1
+		char name[64];
+		sprintf(name, "%s/%s", fileSysPath, dp->d_name);
+		if ((fd = afs_open(name, O_RDONLY)) != -1
 		    && read(fd, (char *)&diskHeader, sizeof(diskHeader))
 		    == sizeof(diskHeader)
 		    && diskHeader.stamp.magic == VOLUMEHEADERMAGIC) {
@@ -1760,7 +1767,9 @@ GetVolumeSummary(VolumeId singleVolumeNumber)
 	if (p != NULL && strcmp(p, VHDREXT) == 0) {
 	    int error = 0;
 	    int fd;
-	    if ((fd = afs_open(dp->d_name, O_RDONLY)) == -1
+	    char name[64];
+	    sprintf(name, "%s/%s", fileSysPath, dp->d_name);
+	    if ((fd = afs_open(name, O_RDONLY)) == -1
 		|| read(fd, &diskHeader, sizeof(diskHeader))
 		!= sizeof(diskHeader)
 		|| diskHeader.stamp.magic != VOLUMEHEADERMAGIC) {
@@ -1770,9 +1779,12 @@ GetVolumeSummary(VolumeId singleVolumeNumber)
 	    if (error) {
 		if (!singleVolumeNumber) {
 		    if (!Showmode)
-			Log("%s/%s is not a legitimate volume header file; %sdeleted\n", fileSysPathName, dp->d_name, (Testing ? "it would have been " : ""));
-		    if (!Testing)
-			unlink(dp->d_name);
+			Log("%s is not a legitimate volume header file; %sdeleted\n", name, (Testing ? "it would have been " : ""));
+		    if (!Testing) {
+			if (unlink(name)) {
+			    Log("Unable to unlink %s (errno = %d)\n", name, errno);
+			}
+		    }
 		}
 	    } else {
 		char nameShouldBe[64];
@@ -1793,9 +1805,12 @@ GetVolumeSummary(VolumeId singleVolumeNumber)
 			AskOffline(vsp->header.id);
 		    if (strcmp(nameShouldBe, dp->d_name)) {
 			if (!Showmode)
-			    Log("Volume header file %s is incorrectly named; %sdeleted (it will be recreated later, if necessary)\n", dp->d_name, (Testing ? "it would have been " : ""));
-			if (!Testing)
-			    unlink(dp->d_name);
+			    Log("Volume header file %s is incorrectly named; %sdeleted (it will be recreated later, if necessary)\n", name, (Testing ? "it would have been " : ""));
+			if (!Testing) {
+			    if (unlink(name)) {
+				Log("Unable to unlink %s (errno = %d)\n", name, errno);
+			    }
+			}
 		    } else {
 			vsp->fileName = ToString(dp->d_name);
 			nVolumes++;
@@ -2173,38 +2188,143 @@ SalvageVolumeHeaderFile(register struct InodeSummary *isp,
     register struct ViceInodeInfo *ip;
     int allinodesobsolete = 1;
     struct VolumeDiskHeader diskHeader;
+    int *skip;
+
+    /* keeps track of special inodes that are probably 'good'; they are
+     * referenced in the vol header, and are included in the given inodes
+     * array */
+    struct {
+	int valid;
+	Inode inode;
+    } goodspecial[MAXINODETYPE];
 
     if (deleteMe)
 	*deleteMe = 0;
+
+    memset(goodspecial, 0, sizeof(goodspecial));
+
+    skip = malloc(isp->nSpecialInodes * sizeof(*skip));
+    if (skip) {
+	memset(skip, 0, isp->nSpecialInodes * sizeof(*skip));
+    } else {
+	Log("cannot allocate memory for inode skip array when salvaging "
+	    "volume %u; not performing duplicate special inode recovery\n",
+	    isp->volumeId);
+	/* still try to perform the salvage; the skip array only does anything
+	 * if we detect duplicate special inodes */
+    }
+
+    /*
+     * First, look at the special inodes and see if any are referenced by
+     * the existing volume header. If we find duplicate special inodes, we
+     * can use this information to use the referenced inode (it's more
+     * likely to be the 'good' one), and throw away the duplicates.
+     */
+    if (isp->volSummary && skip) {
+	/* use tempHeader, so we can use the stuff[] array to easily index
+	 * into the isp->volSummary special inodes */
+	memcpy(&tempHeader, &isp->volSummary->header, sizeof(struct VolumeHeader));
+
+	for (i = 0; i < isp->nSpecialInodes; i++) {
+	    ip = &inodes[isp->index + i];
+	    if (ip->u.special.type <= 0 || ip->u.special.type > MAXINODETYPE) {
+		/* will get taken care of in a later loop */
+		continue;
+	    }
+	    if (ip->inodeNumber == *(stuff[ip->u.special.type - 1].inode)) {
+		goodspecial[ip->u.special.type-1].valid = 1;
+		goodspecial[ip->u.special.type-1].inode = ip->inodeNumber;
+	    }
+	}
+    }
+
     memset(&tempHeader, 0, sizeof(tempHeader));
     tempHeader.stamp.magic = VOLUMEHEADERMAGIC;
     tempHeader.stamp.version = VOLUMEHEADERVERSION;
     tempHeader.id = isp->volumeId;
     tempHeader.parent = isp->RWvolumeId;
+
     /* Check for duplicates (inodes are sorted by type field) */
     for (i = 0; i < isp->nSpecialInodes - 1; i++) {
 	ip = &inodes[isp->index + i];
 	if (ip->u.special.type == (ip + 1)->u.special.type) {
-	    if (!Showmode)
-		Log("Duplicate special inodes in volume header; salvage of volume %u aborted\n", isp->volumeId);
-	    return -1;
+	    afs_ino_str_t stmp1, stmp2;
+
+	    if (ip->u.special.type <= 0 || ip->u.special.type > MAXINODETYPE) {
+		/* Will be caught in the loop below */
+		continue;
+	    }
+	    if (!Showmode) {
+		Log("Duplicate special %d inodes for volume %u found (%s, %s);\n",
+		    ip->u.special.type, isp->volumeId,
+		    PrintInode(stmp1, ip->inodeNumber),
+		    PrintInode(stmp2, (ip+1)->inodeNumber));
+	    }
+	    if (skip && goodspecial[ip->u.special.type-1].valid) {
+		Inode gi = goodspecial[ip->u.special.type-1].inode;
+
+		if (!Showmode) {
+		    Log("using special inode referenced by vol header (%s)\n",
+		        PrintInode(stmp1, gi));
+		}
+
+		/* the volume header references some special inode of
+		 * this type in the inodes array; are we it? */
+		if (ip->inodeNumber != gi) {
+		    skip[i] = 1;
+		} else if ((ip+1)->inodeNumber != gi) {
+		    /* in case this is the last iteration; we need to
+		     * make sure we check ip+1, too */
+		    skip[i+1] = 1;
+		}
+	    } else {
+		if (!Showmode)
+		    Log("cannot determine which is correct; salvage of volume %u aborted\n", isp->volumeId);
+		if (skip) {
+		    free(skip);
+		}
+		return -1;
+	    }
 	}
     }
     for (i = 0; i < isp->nSpecialInodes; i++) {
 	ip = &inodes[isp->index + i];
 	if (ip->u.special.type <= 0 || ip->u.special.type > MAXINODETYPE) {
 	    if (check) {
-		Log("Rubbish header inode\n");
+		Log("Rubbish header inode %s of type %d\n",
+		    PrintInode(NULL, ip->inodeNumber),
+		    ip->u.special.type);
+		if (skip) {
+		    free(skip);
+		}
 		return -1;
 	    }
-	    Log("Rubbish header inode; deleted\n");
+	    Log("Rubbish header inode %s of type %d; deleted\n",
+	        PrintInode(NULL, ip->inodeNumber),
+	        ip->u.special.type);
 	} else if (!stuff[ip->u.special.type - 1].obsolete) {
-	    *(stuff[ip->u.special.type - 1].inode) = ip->inodeNumber;
+	    if (skip && skip[i]) {
+		if (orphans == ORPH_REMOVE) {
+		    Log("Removing orphan special inode %s of type %d\n",
+		        PrintInode(NULL, ip->inodeNumber), ip->u.special.type);
+		    continue;
+		} else {
+		    Log("Ignoring orphan special inode %s of type %d\n",
+		        PrintInode(NULL, ip->inodeNumber), ip->u.special.type);
+		    /* fall through to the ip->linkCount--; line below */
+		}
+	    } else {
+		*(stuff[ip->u.special.type - 1].inode) = ip->inodeNumber;
+		allinodesobsolete = 0;
+	    }
 	    if (!check && ip->u.special.type != VI_LINKTABLE)
 		ip->linkCount--;	/* Keep the inode around */
-	    allinodesobsolete = 0;
 	}
     }
+    if (skip) {
+	free(skip);
+    }
+    skip = NULL;
 
     if (allinodesobsolete) {
 	if (deleteMe)
@@ -2236,23 +2356,26 @@ SalvageVolumeHeaderFile(register struct InodeSummary *isp,
     }
 
     if (isp->volSummary == NULL) {
-	char name[64];
-	(void)afs_snprintf(name, sizeof name, VFORMAT, afs_cast_uint32(isp->volumeId));
+	char path[64];
+	char headerName[64];
+	(void)afs_snprintf(headerName, sizeof headerName, VFORMAT, afs_cast_uint32(isp->volumeId));
+	(void)afs_snprintf(path, sizeof path, "%s/%s", fileSysPath, headerName);
 	if (check) {
 	    Log("No header file for volume %u\n", isp->volumeId);
 	    return -1;
 	}
 	if (!Showmode)
-	    Log("No header file for volume %u; %screating %s/%s\n",
+	    Log("No header file for volume %u; %screating %s\n",
 		isp->volumeId, (Testing ? "it would have been " : ""),
-		fileSysPathName, name);
-	headerFd = afs_open(name, O_RDWR | O_CREAT | O_TRUNC, 0644);
+		path);
+	headerFd = afs_open(path, O_RDWR | O_CREAT | O_TRUNC, 0644);
 	assert(headerFd != -1);
 	isp->volSummary = (struct VolumeSummary *)
 	    malloc(sizeof(struct VolumeSummary));
-	isp->volSummary->fileName = ToString(name);
+	isp->volSummary->fileName = ToString(headerName);
     } else {
-	char name[64];
+	char path[64];
+	char headerName[64];
 	/* hack: these two fields are obsolete... */
 	isp->volSummary->header.volumeAcl = 0;
 	isp->volSummary->header.volumeMountTable = 0;
@@ -2262,18 +2385,18 @@ SalvageVolumeHeaderFile(register struct InodeSummary *isp,
 	     sizeof(struct VolumeHeader))) {
 	    /* We often remove the name before calling us, so we make a fake one up */
 	    if (isp->volSummary->fileName) {
-		strcpy(name, isp->volSummary->fileName);
+		strcpy(headerName, isp->volSummary->fileName);
 	    } else {
-	      (void)afs_snprintf(name, sizeof name, VFORMAT, afs_cast_uint32(isp->volumeId));
-		isp->volSummary->fileName = ToString(name);
+		(void)afs_snprintf(headerName, sizeof headerName, VFORMAT, afs_cast_uint32(isp->volumeId));
+		isp->volSummary->fileName = ToString(headerName);
 	    }
-
-	    Log("Header file %s is damaged or no longer valid%s\n", name,
+	    (void)afs_snprintf(path, sizeof path, "%s/%s", fileSysPath, headerName);
+	    Log("Header file %s is damaged or no longer valid%s\n", path,
 		(check ? "" : "; repairing"));
 	    if (check)
 		return -1;
 
-	    headerFd = afs_open(name, O_RDWR | O_TRUNC, 0644);
+	    headerFd = afs_open(path, O_RDWR | O_TRUNC, 0644);
 	    assert(headerFd != -1);
 	}
     }
@@ -3673,8 +3796,13 @@ MaybeZapVolume(register struct InodeSummary *isp, char *message, int deleteMe,
 		if (!Showmode)
 		    Log("it will be deleted instead.  It should be recloned.\n");
 	    }
-	    if (!Testing)
-		unlink(isp->volSummary->fileName);
+	    if (!Testing) {
+		char path[64];
+		sprintf(path, "%s/%s", fileSysPath, isp->volSummary->fileName);
+		if (unlink(path)) {
+		    Log("Unable to unlink %s (errno = %d)\n", path, errno);
+		}
+	    }
 	}
     } else if (!check) {
 	Log("%s salvage was unsuccessful: read-write volume %u\n", message,
@@ -3964,16 +4092,18 @@ ToString(char *s)
     assert(p != NULL);
     strcpy(p, s);
     return p;
-
 }
 
 /* Remove the FORCESALVAGE file */
 void
 RemoveTheForce(char *path)
 {
+    char target[1024];
+    struct afs_stat force; // so we can use afs_stat to find it
+    strcpy(target,path);
+    strcat(target,"/FORCESALVAGE");
     if (!Testing && ForceSalvage) {
-	if (chdir(path) == 0)
-	    unlink("FORCESALVAGE");
+        if (afs_stat(target,&force) == 0)  unlink(target);
     }
 }
 
@@ -3985,10 +4115,11 @@ int
 UseTheForceLuke(char *path)
 {
     struct afs_stat force;
+    char target[1024];
+    strcpy(target,path);
+    strcat(target,"/FORCESALVAGE");
 
-    assert(chdir(path) != -1);
-
-    return (afs_stat("FORCESALVAGE", &force) == 0);
+    return (afs_stat(target, &force) == 0);
 }
 #else
 /*

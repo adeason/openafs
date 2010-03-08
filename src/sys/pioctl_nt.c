@@ -10,8 +10,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/sys/pioctl_nt.c,v 1.18.2.13 2007/06/10 05:54:10 jaltman Exp $");
 
 #include <afs/stds.h>
 #include <windows.h>

@@ -10,8 +10,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/rx/bulk.example/bulk_server.c,v 1.5 2003/05/14 14:30:51 shadow Exp $");
 
 #include <sys/types.h>
 #include <netdb.h>

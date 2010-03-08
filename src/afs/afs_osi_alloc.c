@@ -10,8 +10,6 @@
 #include <afsconfig.h>
 #include "afs/param.h"
 
-RCSID
-    ("$Header: /cvs/openafs/src/afs/afs_osi_alloc.c,v 1.10.2.5 2008/08/26 14:02:10 shadow Exp $");
 
 
 

@@ -55,10 +55,6 @@ struct VenusFid {
     struct AFSFid Fid;
 };
 
-#ifdef RCSID
-RCSID("$Id: create-stat.c,v 1.2 2003/07/15 23:16:56 shadow Exp $");
-#endif
-
 static void
 usage(int ret)
 {

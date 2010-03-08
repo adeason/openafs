@@ -13,8 +13,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/venus/whatfid.c,v 1.5.2.3 2008/11/30 20:25:03 shadow Exp $");
 
 #include <stdio.h>
 #include <errno.h>

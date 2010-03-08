@@ -47,8 +47,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/kauth/krb_tf.c,v 1.6.2.3 2007/10/30 15:23:54 shadow Exp $");
 
 #ifdef HAVE_FCNTL_H
 #include <fcntl.h>

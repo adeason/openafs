@@ -46,8 +46,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/rx/xdr_rec.c,v 1.6.2.2 2008/02/04 04:07:18 jaltman Exp $");
 
 #include <stdio.h>
 #ifdef HAVE_STDLIB_H

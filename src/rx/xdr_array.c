@@ -30,8 +30,6 @@
 #include <afs/param.h>
 #include "rx.h"
 
-RCSID
-    ("$Header: /cvs/openafs/src/rx/xdr_array.c,v 1.9.2.4 2007/10/30 15:24:04 shadow Exp $");
 
 #ifndef	NeXT
 

@@ -10,8 +10,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/bucoord/expire.c,v 1.6.2.1 2007/01/05 03:34:09 shadow Exp $");
 
 #include <afs/stds.h>
 #include <sys/types.h>

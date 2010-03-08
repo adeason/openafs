@@ -10,8 +10,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/kauth/kpwvalid.c,v 1.6.2.3 2008/10/27 23:54:09 shadow Exp $");
 
 #include <stdio.h>
 #include <string.h>

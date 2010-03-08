@@ -14,8 +14,6 @@
 #include <afs/param.h>
 #endif
 
-RCSID
-    ("$Header: /cvs/openafs/src/rx/rx_rdwr.c,v 1.21.2.13 2009/01/05 23:17:48 jaltman Exp $");
 
 #ifdef KERNEL
 #ifndef UKERNEL
@@ -299,16 +297,14 @@ rx_ReadProc(struct rx_call *call, char *buf, int nbytes)
     char *tcurpos;
     SPLVAR;
 
-    /*
-     * Free any packets from the last call to ReadvProc/WritevProc.
-     * We do not need the lock because the receiver threads only
-     * touch the iovq when the RX_CALL_IOVEC_WAIT flag is set, and the
-     * RX_CALL_IOVEC_WAIT is always cleared before returning from
-     * ReadvProc/WritevProc.
-     */
+    /* Free any packets from the last call to ReadvProc/WritevProc */
+    NETPRI;
+    MUTEX_ENTER(&call->lock);
     if (!queue_IsEmpty(&call->iovq)) {
         rxi_FreePackets(0, &call->iovq);
     }
+    MUTEX_EXIT(&call->lock);
+    USERPRI;
 
     /*
      * Most common case, all of the data is in the current iovec.
@@ -326,7 +322,7 @@ rx_ReadProc(struct rx_call *call, char *buf, int nbytes)
 	call->curlen = tcurlen - nbytes;
 	call->nLeft = tnLeft - nbytes;
 
-        if (!call->nLeft) {
+        if (!call->nLeft && call->currentPacket != NULL) {
             /* out of packet.  Get another one. */
             NETPRI;
             MUTEX_ENTER(&call->lock);
@@ -356,16 +352,14 @@ rx_ReadProc32(struct rx_call *call, afs_int32 * value)
     char *tcurpos;
     SPLVAR;
 
-    /*
-     * Free any packets from the last call to ReadvProc/WritevProc.
-     * We do not need the lock because the receiver threads only
-     * touch the iovq when the RX_CALL_IOVEC_WAIT flag is set, and the
-     * RX_CALL_IOVEC_WAIT is always cleared before returning from
-     * ReadvProc/WritevProc.
-     */
+    /* Free any packets from the last call to ReadvProc/WritevProc */
+    NETPRI;
+    MUTEX_ENTER(&call->lock);
     if (!queue_IsEmpty(&call->iovq)) {
 	rxi_FreePackets(0, &call->iovq);
     }
+    MUTEX_EXIT(&call->lock);
+    USERPRI;
 
     /*
      * Most common case, all of the data is in the current iovec.
@@ -385,9 +379,9 @@ rx_ReadProc32(struct rx_call *call, afs_int32 * value)
 	    memcpy((char *)value, tcurpos, sizeof(afs_int32));
 	}
 	call->curpos = tcurpos + sizeof(afs_int32);
-	call->curlen = tcurlen - sizeof(afs_int32);
-	call->nLeft = tnLeft - sizeof(afs_int32);
-        if (!call->nLeft) {
+	call->curlen = (u_short)(tcurlen - sizeof(afs_int32));
+	call->nLeft = (u_short)(tnLeft - sizeof(afs_int32));
+        if (!call->nLeft && call->currentPacket != NULL) {
             /* out of packet.  Get another one. */
             NETPRI;
             MUTEX_ENTER(&call->lock);
@@ -832,16 +826,14 @@ rx_WriteProc(struct rx_call *call, char *buf, int nbytes)
     char *tcurpos;
     SPLVAR;
 
-    /*
-     * Free any packets from the last call to ReadvProc/WritevProc.
-     * We do not need the lock because the receiver threads only
-     * touch the iovq when the RX_CALL_IOVEC_WAIT flag is set, and the
-     * RX_CALL_IOVEC_WAIT is always cleared before returning from
-     * ReadvProc/WritevProc.
-     */
+    /* Free any packets from the last call to ReadvProc/WritevProc */
+    NETPRI;
+    MUTEX_ENTER(&call->lock);
     if (queue_IsNotEmpty(&call->iovq)) {
 	rxi_FreePackets(0, &call->iovq);
     }
+    MUTEX_EXIT(&call->lock);
+    USERPRI;
 
     /*
      * Most common case: all of the data fits in the current iovec.
@@ -879,16 +871,14 @@ rx_WriteProc32(register struct rx_call *call, register afs_int32 * value)
     char *tcurpos;
     SPLVAR;
 
-    /*
-     * Free any packets from the last call to ReadvProc/WritevProc.
-     * We do not need the lock because the receiver threads only
-     * touch the iovq when the RX_CALL_IOVEC_WAIT flag is set, and the
-     * RX_CALL_IOVEC_WAIT is always cleared before returning from
-     * ReadvProc/WritevProc.
-     */
+    /* Free any packets from the last call to ReadvProc/WritevProc */
+    NETPRI;
+    MUTEX_ENTER(&call->lock);
     if (queue_IsNotEmpty(&call->iovq)) {
 	rxi_FreePackets(0, &call->iovq);
     }
+    MUTEX_EXIT(&call->lock);
+    USERPRI;
 
     /*
      * Most common case: all of the data fits in the current iovec.

@@ -16,8 +16,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/gtx/objdict.c,v 1.6 2003/07/15 23:15:13 shadow Exp $");
 
 #include "gtxobjdict.h"		/*Interface for this module */
 #include <stdio.h>		/*Standard I/O package */

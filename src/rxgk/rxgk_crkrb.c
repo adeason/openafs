@@ -38,8 +38,6 @@
 #include "rxgk_locl.h"
 #include <errno.h>
 
-RCSID("$Id: rxgk_crkrb.c,v 1.1 2004/08/08 19:21:33 shadow Exp $");
-
 struct _rxg_key_type {
     char *name;
     int enctype;

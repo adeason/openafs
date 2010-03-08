@@ -29,8 +29,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/rx/xdr_mem.c,v 1.9 2003/07/15 23:16:12 shadow Exp $");
 
 #ifndef	NeXT
 

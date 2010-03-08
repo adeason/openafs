@@ -10,8 +10,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/libadmin/client/afs_clientAdmin.c,v 1.9.2.3 2007/07/16 00:00:37 jaltman Exp $");
 
 #include <afs/stds.h>
 #include "afs_clientAdmin.h"

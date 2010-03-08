@@ -34,8 +34,6 @@
 #include <afs/param.h>
 #endif
 
-RCSID
-    ("$Header: /cvs/openafs/src/rx/xdr_int32.c,v 1.5.2.1 2004/12/07 06:10:07 shadow Exp $");
 
 #ifndef	NeXT
 

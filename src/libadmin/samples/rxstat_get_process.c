@@ -16,8 +16,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/libadmin/samples/rxstat_get_process.c,v 1.7.2.1 2007/10/30 15:23:57 shadow Exp $");
 
 #ifdef AFS_NT40_ENV
 #include <winsock2.h>

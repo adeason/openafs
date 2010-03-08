@@ -32,8 +32,6 @@
 #include <afsconfig.h>
 #include "afs/param.h"
 
-RCSID
-    ("$Header: /cvs/openafs/src/afs/afs_server.c,v 1.33.2.14 2009/06/24 21:30:14 shadow Exp $");
 
 #include "afs/stds.h"
 #include "afs/sysincludes.h"	/* Standard vendor system headers */
@@ -1518,8 +1516,10 @@ static int afs_SetServerPrefs(struct srvAddr *sa) {
 	    afsi_SetServerIPRank(sa, ifa);
     }}
 #endif
-    end:
 #endif				/* USEIFADDR */
+#ifndef USEIFADDR
+    end:
+#endif
 #endif				/* AFS_SUN5_ENV */
 #endif				/* else AFS_USERSPACE_IP_ADDR */
     if (sa)

@@ -1,4 +1,4 @@
-# $Id: buildpkg.sh,v 1.3.2.3 2008/01/03 02:30:37 rees Exp $
+# $Id$
 
 # This doesn't actually build a package any more
 

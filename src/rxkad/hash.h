@@ -30,7 +30,7 @@
  * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
  * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. */
 
-/* $Id: hash.h,v 1.2.2.1 2004/08/25 07:09:42 shadow Exp $ */
+/* $Id$ */
 
 /* stuff in common between md4, md5, and sha1 */
 

@@ -10,8 +10,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/vol/nuke.c,v 1.13.2.3 2006/09/03 05:38:09 shadow Exp $");
 
 #include <rx/xdr.h>
 #include <afs/afsint.h>

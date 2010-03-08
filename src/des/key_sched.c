@@ -30,8 +30,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/des/key_sched.c,v 1.6.2.5 2005/08/18 04:56:14 shadow Exp $");
 
 #include <mit-cpyright.h>
 #include "des_internal.h"

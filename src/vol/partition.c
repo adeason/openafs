@@ -20,8 +20,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/vol/partition.c,v 1.30.2.7 2008/08/16 19:15:49 shadow Exp $");
 
 #include <ctype.h>
 #include <string.h>

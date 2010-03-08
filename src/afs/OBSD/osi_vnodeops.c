@@ -3,7 +3,7 @@
  * Original NetBSD version for Transarc afs by John Kohl <jtk@MIT.EDU>
  * OpenBSD version by Jim Rees <rees@umich.edu>
  *
- * $Id: osi_vnodeops.c,v 1.18.2.6 2009/03/27 15:55:45 shadow Exp $
+ * $Id$
  */
 
 /*
@@ -98,8 +98,6 @@ NONINFRINGEMENT.
 #include <afsconfig.h>
 #include "afs/param.h"
 
-RCSID
-    ("$Header: /cvs/openafs/src/afs/OBSD/osi_vnodeops.c,v 1.18.2.6 2009/03/27 15:55:45 shadow Exp $");
 
 #include "afs/sysincludes.h"	/* Standard vendor system headers */
 #include "afs/afsincludes.h"	/* Afs-based standard headers */

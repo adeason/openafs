@@ -1,4 +1,4 @@
-# $Id: Makefile.am,v 1.1.16.1 2006/03/09 06:42:17 shadow Exp $
+# $Id$
 
 include $(top_srcdir)/Makefile.am.common
 

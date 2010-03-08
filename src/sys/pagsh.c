@@ -10,8 +10,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/sys/pagsh.c,v 1.9.2.10 2009/06/03 05:42:02 shadow Exp $");
 
 #ifdef	AFS_AIX32_ENV
 #include <signal.h>

@@ -14,8 +14,6 @@
 #endif
 #include <afsconfig.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/rxstat/rxstat.c,v 1.7 2003/07/15 23:16:48 shadow Exp $");
 
 #ifdef UKERNEL
 #include "afs/sysincludes.h"

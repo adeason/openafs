@@ -10,8 +10,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/libadmin/vos/vosutils.c,v 1.10.2.4 2007/10/30 15:23:58 shadow Exp $");
 
 #include "vosutils.h"
 #include "vsprocs.h"

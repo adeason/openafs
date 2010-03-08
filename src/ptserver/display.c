@@ -10,8 +10,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/ptserver/display.c,v 1.9.2.1 2007/10/30 15:24:02 shadow Exp $");
 
 #include <afs/stds.h>
 #include <sys/types.h>

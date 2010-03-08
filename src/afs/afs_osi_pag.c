@@ -22,8 +22,6 @@
 #include <afsconfig.h>
 #include "afs/param.h"
 
-RCSID
-    ("$Header: /cvs/openafs/src/afs/afs_osi_pag.c,v 1.21.2.13 2008/10/20 19:29:46 shadow Exp $");
 
 #include "afs/sysincludes.h"	/* Standard vendor system headers */
 #include "afsincludes.h"	/* Afs-based standard headers */
@@ -256,13 +254,13 @@ afs_setpag(void)
     }
 #elif defined(AFS_DARWIN80_ENV)
     {
-	struct ucred *credp = kauth_cred_proc_ref(p);
+	struct AFS_UCRED *credp = kauth_cred_proc_ref(p);
 	code = AddPag(p, genpag(), &credp);
-	kauth_cred_rele(credp);
+	crfree(credp);
     }
 #elif defined(AFS_DARWIN_ENV)
     {
-	struct ucred *credp = crdup(p->p_cred->pc_ucred);
+	struct AFS_UCRED *credp = crdup(p->p_cred->pc_ucred);
 	code = AddPag(p, genpag(), &credp);
 	crfree(credp);
     }
@@ -429,17 +427,10 @@ AddPag(afs_int32 aval, struct AFS_UCRED **credpp)
 int
 afs_InitReq(register struct vrequest *av, struct AFS_UCRED *acred)
 {
-    int i = 0;
-
     AFS_STATCNT(afs_InitReq);
     if (afs_shuttingdown)
 	return EIO;
-    av->idleError = 0;
-    av->tokenError = 0;
-    while (i < MAXHOSTS) {
-	av->skipserver[i] = 0;
-	i++;
-    }
+    memset(av, 0, sizeof(*av));
     av->uid = PagInCred(acred);
     if (av->uid == NOPAG) {
 	/* Afs doesn't use the unix uid for anuthing except a handle
@@ -458,7 +449,6 @@ afs_InitReq(register struct vrequest *av, struct AFS_UCRED *acred)
 	av->uid = acred->cr_ruid;	/* default when no pag is set */
 #endif
     }
-    av->initd = 0;
     return 0;
 }
 

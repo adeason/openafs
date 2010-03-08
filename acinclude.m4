@@ -5,10 +5,8 @@ dnl NB: Because this code is a macro, references to positional shell
 dnl parameters must be done like $[]1 instead of $1
 
 AC_DEFUN([OPENAFS_CONFIGURE_COMMON],[
-AH_VERBATIM([RCSID],
-[#define RCSID(msg) \
-static /**/const char *const rcsid[] = { (char *)rcsid, "\100(#)" msg }
-#undef HAVE_CONNECT
+AH_VERBATIM([OPENAFS_HEADER],
+[#undef HAVE_CONNECT
 #undef HAVE_GETHOSTBYNAME
 #undef HAVE_RES_SEARCH
 #undef HAVE_SOCKET
@@ -230,34 +228,39 @@ case $system in
 		 else
 		   LINUX_KERNEL_BUILD=$LINUX_KERNEL_PATH
 		 fi
-               if test -f "$LINUX_KERNEL_BUILD/include/linux/utsrelease.h"; then
-		 linux_kvers=`fgrep UTS_RELEASE $LINUX_KERNEL_BUILD/include/linux/utsrelease.h |awk 'BEGIN { FS="\"" } { print $[]2 }'|tail -n 1`
-		 LINUX_VERSION="$linux_kvers"
-               else
-		 if test -f "$LINUX_KERNEL_BUILD/include/linux/version.h"; then
-		  linux_kvers=`fgrep UTS_RELEASE $LINUX_KERNEL_BUILD/include/linux/version.h |awk 'BEGIN { FS="\"" } { print $[]2 }'|tail -n 1`
-		  if test "x$linux_kvers" = "x"; then
-		    if test -f "$LINUX_KERNEL_BUILD/include/linux/version-up.h"; then
-		      linux_kvers=`fgrep UTS_RELEASE $LINUX_KERNEL_BUILD/include/linux/version-up.h |awk 'BEGIN { FS="\"" } { print $[]2 }'|tail -n 1`
-		      if test "x$linux_kvers" = "x"; then
-
-		        AC_MSG_ERROR(Linux headers lack version definition [2])
-		        exit 1
-		      else
-		        LINUX_VERSION="$linux_kvers"
-                      fi
-                    else
-                      AC_MSG_ERROR(Linux headers lack version definition)
-		      exit 1
-		    fi
-		  else
-		    LINUX_VERSION="$linux_kvers"
-		  fi
+                 if test -f "$LINUX_KERNEL_BUILD/include/generated/utsrelease.h"; then
+		   linux_kvers=`fgrep UTS_RELEASE $LINUX_KERNEL_BUILD/include/generated/utsrelease.h |awk 'BEGIN { FS="\"" } { print $[]2 }'|tail -n 1`
+		   LINUX_VERSION="$linux_kvers"
 		 else
-                    enable_kernel_module="no"
-                 fi
-               fi
-		 if test ! -f "$LINUX_KERNEL_BUILD/include/linux/autoconf.h"; then
+                   if test -f "$LINUX_KERNEL_BUILD/include/linux/utsrelease.h"; then
+		     linux_kvers=`fgrep UTS_RELEASE $LINUX_KERNEL_BUILD/include/linux/utsrelease.h |awk 'BEGIN { FS="\"" } { print $[]2 }'|tail -n 1`
+		     LINUX_VERSION="$linux_kvers"
+                   else
+		     if test -f "$LINUX_KERNEL_BUILD/include/linux/version.h"; then
+		       linux_kvers=`fgrep UTS_RELEASE $LINUX_KERNEL_BUILD/include/linux/version.h |awk 'BEGIN { FS="\"" } { print $[]2 }'|tail -n 1`
+		       if test "x$linux_kvers" = "x"; then
+		         if test -f "$LINUX_KERNEL_BUILD/include/linux/version-up.h"; then
+		           linux_kvers=`fgrep UTS_RELEASE $LINUX_KERNEL_BUILD/include/linux/version-up.h |awk 'BEGIN { FS="\"" } { print $[]2 }'|tail -n 1`
+		           if test "x$linux_kvers" = "x"; then
+		             AC_MSG_ERROR(Linux headers lack version definition [2])
+		             exit 1
+		           else
+		             LINUX_VERSION="$linux_kvers"
+                           fi
+                         else
+                           AC_MSG_ERROR(Linux headers lack version definition)
+		           exit 1
+		         fi
+		       else
+		         LINUX_VERSION="$linux_kvers"
+		       fi
+		     else
+                       enable_kernel_module="no"
+                     fi
+                   fi
+		 fi
+		 if test ! -f "$LINUX_KERNEL_BUILD/include/generated/autoconf.h" &&
+		    test ! -f "$LINUX_KERNEL_BUILD/include/linux/autoconf.h"; then
 		     enable_kernel_module="no"
 		 fi
 		 if test "x$enable_kernel_module" = "xno"; then
@@ -552,6 +555,9 @@ else
 		i386-apple-darwin9.*)
 			AFS_SYSNAME="x86_darwin_90"
 			;;
+		i?86-apple-darwin10.*)
+			AFS_SYSNAME="x86_darwin_100"
+			;;
 		sparc-sun-solaris2.5*)
 			AFS_SYSNAME="sun4x_55"
 			enable_login="yes"
@@ -632,6 +638,9 @@ else
 		i?86-*-linux*)
 			AFS_SYSNAME="i386_linuxXX"
 			;;
+		arm*-linux*)
+			AFS_SYSNAME="arm_linuxXX"
+			;;
 		parisc-*-linux-gnu|hppa-*-linux-gnu)
 			AFS_SYSNAME="parisc_linuxXX"
 			enable_pam="no"
@@ -676,10 +685,8 @@ else
 			fi
 			_AFS_SYSNAME=`echo $AFS_SYSNAME|sed s/XX\$/$AFS_SYSKVERS/`
 			AFS_SYSNAME="$_AFS_SYSNAME"
-			save_CPPFLAGS="$CPPFLAGS"
-			CPPFLAGS="-I${LINUX_KERNEL_PATH}/include $CPPFLAGS"
-			AC_TRY_COMPILE(
-			 [#include <linux/autoconf.h>],
+			AC_TRY_KBUILD(
+			 [],
 			 [#ifndef CONFIG_USERMODE
 			  #error not UML
 			  #endif],
@@ -687,7 +694,6 @@ else
 			if test "${ac_cv_linux_is_uml}" = yes; then
 			 _AFS_SYSNAME=`echo $AFS_SYSNAME|sed s/linux/umlinux/`
 			fi
-			CPPFLAGS="$save_CPPFLAGS"
 			AFS_SYSNAME="$_AFS_SYSNAME"
 			;;
 	esac
@@ -734,12 +740,14 @@ case $AFS_SYSNAME in *_linux* | *_umlinux*)
 		 LINUX_HAVE_BDI_INIT
 		 LINUX_HAVE_KMEM_CACHE_T
 		 LINUX_KMEM_CACHE_CREATE_TAKES_DTOR
+		 LINUX_KMEM_CACHE_CREATE_CTOR_TAKES_VOID
 		 LINUX_CONFIG_H_EXISTS
 		 LINUX_COMPLETION_H_EXISTS
 		 LINUX_SEMAPHORE_H_EXISTS
 		 LINUX_DEFINES_FOR_EACH_PROCESS
 		 LINUX_DEFINES_PREV_TASK
 		 LINUX_FS_STRUCT_SUPER_HAS_ALLOC_INODE
+		 LINUX_FS_STRUCT_SUPER_BLOCK_HAS_S_BDI
 	         LINUX_FS_STRUCT_ADDRESS_SPACE_HAS_PAGE_LOCK
 	         LINUX_FS_STRUCT_ADDRESS_SPACE_HAS_GFP_MASK
 		 LINUX_FS_STRUCT_INODE_HAS_I_ALLOC_SEM
@@ -769,7 +777,8 @@ case $AFS_SYSNAME in *_linux* | *_umlinux*)
 		 LINUX_KERNEL_LINUX_SYSCALL_H
 		 LINUX_KERNEL_LINUX_SEQ_FILE_H
 		 LINUX_KERNEL_POSIX_LOCK_FILE_WAIT_ARG
-		 LINUX_KERNEL_SELINUX
+		 LINUX_POSIX_TEST_LOCK_RETURNS_CONFLICT
+		 LINUX_POSIX_TEST_LOCK_CONFLICT_ARG
 		 LINUX_KERNEL_SOCK_CREATE
 		 LINUX_KERNEL_PAGE_FOLLOW_LINK
 		 LINUX_KERNEL_HLIST_UNHASHED
@@ -804,6 +813,7 @@ case $AFS_SYSNAME in *_linux* | *_umlinux*)
 		 LINUX_INIT_WORK_HAS_DATA
 		 LINUX_REGISTER_SYSCTL_TABLE_NOFLAG
 		 LINUX_SYSCTL_TABLE_CHECKING
+		 LINUX_STRUCT_CTL_TABLE_HAS_CTL_NAME
 		 LINUX_HAVE_IGET
 		 LINUX_HAVE_I_SIZE_READ
 		 LINUX_FS_STRUCT_NAMEIDATA_HAS_PATH
@@ -940,9 +950,6 @@ case $AFS_SYSNAME in *_linux* | *_umlinux*)
 		 fi
 		 if test "x$ac_cv_linux_kernel_posix_lock_file_wait_arg" = "xyes" ; then
 		  AC_DEFINE(POSIX_LOCK_FILE_WAIT_ARG, 1, [define if your linux kernel uses 3 arguments for posix_lock_file])
-		 fi
-		 if test "x$ac_cv_linux_kernel_is_selinux" = "xyes" ; then
-		  AC_DEFINE(LINUX_KERNEL_IS_SELINUX, 1, [define if your linux kernel uses SELinux features])
 		 fi
 		 if test "x$ac_cv_linux_kernel_sock_create_v" = "xyes" ; then
 		  AC_DEFINE(LINUX_KERNEL_SOCK_CREATE_V, 1, [define if your linux kernel uses 5 arguments for sock_create])
@@ -1407,6 +1414,10 @@ else
     AC_MSG_RESULT(no)
 fi
 	
+AC_CHECK_SIZEOF(void *)
+AC_CHECK_SIZEOF(unsigned long long)
+AC_CHECK_SIZEOF(unsigned long)
+AC_CHECK_SIZEOF(unsigned int)
 AC_CHECK_TYPE(ssize_t, int)
 AC_SIZEOF_TYPE(long)
 

@@ -17,8 +17,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/vol/vol-info.c,v 1.18.2.6 2009/03/23 18:19:57 shadow Exp $");
 
 #include <ctype.h>
 #include <errno.h>
@@ -413,11 +411,7 @@ HandlePart(struct DiskPartition64 *partP)
     char *p = VPartitionPath(partP);
 #endif
 
-    if (chdir(p) == -1) {
-	printf("Can't chdir to partition %s; giving up\n", p);
-	exit(1);
-    }
-    if ((dirp = opendir(".")) == NULL) {
+    if ((dirp = opendir(p)) == NULL) {
 	printf("Can't read directory %s; giving up\n", p);
 	exit(1);
     }

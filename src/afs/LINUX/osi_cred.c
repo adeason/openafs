@@ -14,8 +14,6 @@
 #include <afsconfig.h>
 #include "afs/param.h"
 
-RCSID
-    ("$Header: /cvs/openafs/src/afs/LINUX/osi_cred.c,v 1.10.2.6 2009/05/11 14:55:40 shadow Exp $");
 
 #include "afs/sysincludes.h"
 #include "afsincludes.h"

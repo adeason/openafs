@@ -3,7 +3,7 @@
  * Original NetBSD version for Transarc afs by John Kohl <jtk@MIT.EDU>
  * OpenBSD version by Jim Rees <rees@umich.edu>
  *
- * $Id: osi_vfsops.c,v 1.18.2.2 2005/03/11 06:50:43 shadow Exp $
+ * $Id$
  */
 
 /*
@@ -93,8 +93,6 @@ NONINFRINGEMENT.
 #include <afsconfig.h>
 #include "afs/param.h"
 
-RCSID
-    ("$Header: /cvs/openafs/src/afs/OBSD/osi_vfsops.c,v 1.18.2.2 2005/03/11 06:50:43 shadow Exp $");
 
 #include "afs/sysincludes.h"	/* Standard vendor system headers */
 #include "afs/afsincludes.h"	/* Afs-based standard headers */
@@ -269,6 +267,13 @@ afs_unmount(afsp, flags, p)
      struct proc *p;
 {
     extern int sys_ioctl(), sys_setgroups();
+
+    struct vnode *vp;
+
+    for (vp = LIST_FIRST(&afsp->mnt_vnodelist); vp != NULL;
+	vp = LIST_NEXT(vp, v_mntvnodes)) {
+	if (vp->v_usecount) return EBUSY;
+    }
 
     AFS_STATCNT(afs_unmount);
 #ifdef AFS_DISCON_ENV
@@ -457,7 +462,7 @@ afs_vfs_load(struct lkm_table *lkmtp, int cmd)
     if (memname[M_AFSBUFFER] == NULL)
 	memname[M_AFSBUFFER] = afsbfrmem;
     lkmid = lkmtp->id;
-    printf("OpenAFS ($Revision: 1.18.2.2 $) lkm loaded\n");
+    printf("OpenAFS ($Revision$) lkm loaded\n");
     return 0;
 }
 

@@ -18,8 +18,6 @@
 #include <afs/param.h>
 #endif
 
-RCSID
-    ("$Header: /cvs/openafs/src/rxkad/rxkad_client.c,v 1.18.2.7 2008/01/04 18:08:23 rees Exp $");
 
 #ifdef KERNEL
 #include "afs/stds.h"

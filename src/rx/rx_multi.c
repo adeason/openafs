@@ -10,8 +10,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/rx/rx_multi.c,v 1.8.2.3 2008/08/26 14:02:24 shadow Exp $");
 
 #ifdef	KERNEL
 #include "afs/sysincludes.h"

@@ -10,8 +10,6 @@
 #include <afsconfig.h>
 #include "afs/param.h"
 
-RCSID
-    ("$Header: /cvs/openafs/src/afs/DARWIN/osi_vm.c,v 1.14.2.5 2006/01/28 18:04:05 shadow Exp $");
 
 #include "afs/sysincludes.h"	/* Standard vendor system headers */
 #include "afsincludes.h"	/* Afs-based standard headers */
@@ -69,7 +67,7 @@ osi_VM_StoreAllSegments(struct vcache *avc)
     ReleaseWriteLock(&avc->lock);
     AFS_GUNLOCK();
 #ifdef AFS_DARWIN80_ENV
-    ubc_sync_range(vp, 0, ubc_getsize(vp), UBC_SYNC|UBC_PUSHDIRTY);
+    ubc_msync_range(vp, 0, ubc_getsize(vp), UBC_SYNC|UBC_PUSHDIRTY);
 #else
     if (UBCINFOEXISTS(vp)) {
 	ubc_pushdirty(vp);
@@ -99,7 +97,7 @@ osi_VM_TryToSmush(struct vcache *avc, struct AFS_UCRED *acred, int sync)
     ReleaseWriteLock(&avc->lock);
     AFS_GUNLOCK();
 #ifdef AFS_DARWIN80_ENV
-    ubc_sync_range(vp, 0, ubc_getsize(vp), UBC_INVALIDATE);
+    ubc_msync_range(vp, 0, ubc_getsize(vp), UBC_INVALIDATE);
 #else
     if (UBCINFOEXISTS(vp)) {
 	size = ubc_getsize(vp);
@@ -128,7 +126,7 @@ osi_VM_FlushPages(struct vcache *avc, struct AFS_UCRED *credp)
     off_t size;
 #ifdef AFS_DARWIN80_ENV
     size = ubc_getsize(vp);
-    ubc_sync_range(vp, 0, size, UBC_INVALIDATE);
+    ubc_msync_range(vp, 0, size, UBC_INVALIDATE);
 	/* XXX what about when not CStatd */
     if (avc->states & CStatd && size != avc->m.Length)
        ubc_setsize(vp, avc->m.Length);

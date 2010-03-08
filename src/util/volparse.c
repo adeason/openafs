@@ -10,9 +10,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/util/volparse.c,v 1.11.2.1 2007/10/30 15:24:09 shadow Exp $");
-
 #include <string.h>
 #ifdef HAVE_STDLIB_H
 #include <stdlib.h>

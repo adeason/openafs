@@ -26,8 +26,6 @@
 #endif
 #endif
 
-RCSID
-    ("$Header: /cvs/openafs/src/pam/afs_util.c,v 1.12.2.8 2009/06/03 05:42:01 shadow Exp $");
 
 #include "afs_util.h"
 

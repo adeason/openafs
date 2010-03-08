@@ -4,8 +4,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/afs/DARWIN/osi_vnodeops.c,v 1.18.2.29 2007/11/27 20:04:13 shadow Exp $");
 
 #include <afs/sysincludes.h>	/* Standard vendor system headers */
 #include <afsincludes.h>	/* Afs-based standard headers */
@@ -747,7 +745,7 @@ afs_vop_read(ap)
     if (vnode_isdir(ap->a_vp)) 
 	return EISDIR;
 #ifdef AFS_DARWIN80_ENV
-    ubc_sync_range(ap->a_vp, AFS_UIO_OFFSET(ap->a_uio), AFS_UIO_OFFSET(ap->a_uio) + AFS_UIO_RESID(ap->a_uio), UBC_PUSHDIRTY);
+    ubc_msync_range(ap->a_vp, AFS_UIO_OFFSET(ap->a_uio), AFS_UIO_OFFSET(ap->a_uio) + AFS_UIO_RESID(ap->a_uio), UBC_PUSHDIRTY);
 #else
     if (UBCINFOEXISTS(ap->a_vp)) {
 	ubc_clean(ap->a_vp, 0);
@@ -888,7 +886,7 @@ afs_vop_write(ap)
     struct vcache *avc = VTOAFS(ap->a_vp);
     void *object;
 #ifdef AFS_DARWIN80_ENV
-    ubc_sync_range(ap->a_vp, AFS_UIO_OFFSET(ap->a_uio), AFS_UIO_OFFSET(ap->a_uio) + AFS_UIO_RESID(ap->a_uio), UBC_INVALIDATE);
+    ubc_msync_range(ap->a_vp, AFS_UIO_OFFSET(ap->a_uio), AFS_UIO_OFFSET(ap->a_uio) + AFS_UIO_RESID(ap->a_uio), UBC_INVALIDATE);
 #else
     if (UBCINFOEXISTS(ap->a_vp)) {
 	ubc_clean(ap->a_vp, 1);
@@ -1097,7 +1095,7 @@ afs_vop_ioctl(ap)
     if (((ap->a_command >> 8) & 0xff) == 'V') {
 	/* This is a VICEIOCTL call */
 	AFS_GLOCK();
-	error = HandleIoctl(tvc, (struct file *)0 /*Not used */ ,
+	error = HandleIoctl(tvc, 
 			    ap->a_command, ap->a_data);
 	AFS_GUNLOCK();
 	return (error);

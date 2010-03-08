@@ -10,8 +10,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/volser/vsprocs.c,v 1.33.2.23 2009/05/31 23:15:21 shadow Exp $");
 
 #include <stdio.h>
 #include <sys/types.h>
@@ -627,29 +625,57 @@ UV_PartitionInfo64(afs_int32 server, char *pname,
     return code;
 }
 
-/* old interface to create volume */
+/* old interface to create volumes */
 int
 UV_CreateVolume(afs_int32 aserver, afs_int32 apart, char *aname,
 		afs_int32 * anewid)
 {
     afs_int32 code;
+    *anewid = 0;
     code = UV_CreateVolume2(aserver, apart, aname, 5000, 0, 0, 0, 0, anewid);
     return code;
 }
 
-/* create a volume, given a server, partition number, volume name --> sends
-* back new vol id in <anewid>*/
+/* less old interface to create volumes */
 int
 UV_CreateVolume2(afs_int32 aserver, afs_int32 apart, char *aname,
 		 afs_int32 aquota, afs_int32 aspare1, afs_int32 aspare2,
 		 afs_int32 aspare3, afs_int32 aspare4, afs_int32 * anewid)
 {
+    afs_uint32 roid = 0, bkid = 0;
+    return UV_CreateVolume3(aserver, apart, aname, aquota, aspare1, aspare2,
+	aspare3, aspare4, anewid, &roid, &bkid);
+}
 
+/**
+ * Create a volume on the given server and partition
+ *
+ * @param aserver  server to create volume on
+ * @param spart  partition to create volume on
+ * @param aname  name of new volume
+ * @param aquota  quota for new volume
+ * @param anewid  contains the desired volume id for the new volume. If
+ *                *anewid == 0, a new id will be chosen, and will be placed
+ *                in *anewid when UV_CreateVolume3 returns.
+ * @param aroid  contains the desired RO volume id. If NULL, the RO id entry
+ *               will be unset. If *aroid == 0, an id will be chosen, and
+ *               will be placed in *anewid when UV_CreateVolume3 returns.
+ * @param abkid  same as aroid, except for the BK volume id instead of the
+ *               RO volume id.
+ * @return 0 on success, error code otherwise.
+ */
+int
+UV_CreateVolume3(afs_int32 aserver, afs_int32 apart, char *aname,
+		 afs_int32 aquota, afs_int32 aspare1, afs_int32 aspare2,
+		 afs_int32 aspare3, afs_int32 aspare4, afs_uint32 * anewid,
+		 afs_uint32 * aroid, afs_uint32 * abkid)
+{
     register struct rx_connection *aconn;
     afs_int32 tid;
     register afs_int32 code;
     afs_int32 error;
     afs_int32 rcode, vcode;
+    afs_int32 lastid;
     struct nvldbentry entry, storeEntry;	/*the new vldb entry */
     struct volintInfo tstatus;
 
@@ -661,13 +687,49 @@ UV_CreateVolume2(afs_int32 aserver, afs_int32 apart, char *aname,
     tstatus.maxquota = aquota;
 
     aconn = UV_Bind(aserver, AFSCONF_VOLUMEPORT);
-    /* next the next 3 available ids from the VLDB */
-    vcode = ubik_VL_GetNewVolumeId(cstruct, 0, 3, anewid);
-    EGOTO1(cfail, vcode, "Could not get an Id for volume %s\n", aname);
+
+    if (aroid && *aroid) {
+	VPRINT1("Using RO volume ID %d.\n", *aroid);
+    }
+    if (abkid && *abkid) {
+	VPRINT1("Using BK volume ID %d.\n", *abkid);
+    }
+
+    if (*anewid) {
+        vcode = VLDB_GetEntryByID(*anewid, -1, &entry);
+	if (!vcode) {
+	    fprintf(STDERR, "Volume ID %d already exists\n", *anewid);
+	    return VVOLEXISTS;
+	}
+	VPRINT1("Using volume ID %d.\n", *anewid);
+    } else {
+	vcode = ubik_VL_GetNewVolumeId(cstruct, 0, 1, anewid);
+	EGOTO1(cfail, vcode, "Could not get an Id for volume %s\n", aname);
+
+	if (aroid && *aroid == 0) {
+	    vcode = ubik_VL_GetNewVolumeId(cstruct, 0, 1, aroid);
+	    EGOTO1(cfail, vcode, "Could not get an RO Id for volume %s\n", aname);
+	}
+
+	if (abkid && *abkid == 0) {
+	    vcode = ubik_VL_GetNewVolumeId(cstruct, 0, 1, abkid);
+	    EGOTO1(cfail, vcode, "Could not get a BK Id for volume %s\n", aname);
+	}
+    }
+
+    /* rw,ro, bk id are related in the default case */
+    /* If caller specified RW id, but not RO/BK ids, have them be RW+1 and RW+2 */
+    lastid = *anewid;
+    if (aroid && *aroid == 0) {
+	*aroid = ++lastid;
+    }
+    if (abkid && *abkid == 0) {
+	*abkid = ++lastid;
+    }
 
     code =
 	AFSVolCreateVolume(aconn, apart, aname, volser_RW, 0, anewid, &tid);
-    EGOTO2(cfail, vcode, "Failed to create the volume %s %u \n", aname,
+    EGOTO2(cfail, code, "Failed to create the volume %s %u \n", aname,
 	   *anewid);
 
     code = AFSVolSetInfo(aconn, tid, &tstatus);
@@ -675,7 +737,7 @@ UV_CreateVolume2(afs_int32 aserver, afs_int32 apart, char *aname,
 	EPRINT(code, "Could not change quota, continuing...\n");
 
     code = AFSVolSetFlags(aconn, tid, 0);	/* bring it online (mark it InService */
-    EGOTO2(cfail, vcode, "Could not bring the volume %s %u online \n", aname,
+    EGOTO2(cfail, code, "Could not bring the volume %s %u online \n", aname,
 	   *anewid);
 
     VPRINT2("Volume %s %u created and brought online\n", aname, *anewid);
@@ -690,8 +752,8 @@ UV_CreateVolume2(afs_int32 aserver, afs_int32 apart, char *aname,
     entry.flags = RW_EXISTS;	/* this records that rw volume exists */
     entry.serverFlags[0] = ITSRWVOL;	/*this rep site has rw  vol */
     entry.volumeId[RWVOL] = *anewid;
-    entry.volumeId[ROVOL] = *anewid + 1;	/* rw,ro, bk id are related in the default case */
-    entry.volumeId[BACKVOL] = *anewid + 2;
+    entry.volumeId[ROVOL] = aroid ? *aroid : 0;
+    entry.volumeId[BACKVOL] = abkid ? *abkid : 0;
     entry.cloneId = 0;
     /*map into right byte order, before passing to xdr, the stuff has to be in host
      * byte order. Xdr converts it into network order */
@@ -1790,6 +1852,7 @@ UV_MoveVolume2(afs_int32 afromvol, afs_int32 afromserver, afs_int32 afrompart,
 	ubik_VL_ReleaseLock(cstruct, 0, afromvol, -1,
 		  (LOCKREL_OPCODE | LOCKREL_AFSID | LOCKREL_TIMESTAMP));
 	VDONE;
+	islocked = 0;
     }
 
     if (clonetid) {
@@ -1995,12 +2058,14 @@ UV_MoveVolume2(afs_int32 afromvol, afs_int32 afromserver, afs_int32 afrompart,
     }
 
     /* unlock VLDB entry */
-    VPRINT1("Recovery: Releasing lock on VLDB entry for volume %u ...",
-	    afromvol);
-    ubik_VL_ReleaseLock(cstruct, 0, afromvol, -1,
-	      (LOCKREL_OPCODE | LOCKREL_AFSID | LOCKREL_TIMESTAMP));
-    VDONE;
-
+    if (islocked) {
+	VPRINT1("Recovery: Releasing lock on VLDB entry for volume %u ...",
+		afromvol);
+	ubik_VL_ReleaseLock(cstruct, 0, afromvol, -1,
+			    (LOCKREL_OPCODE | LOCKREL_AFSID | LOCKREL_TIMESTAMP));
+	VDONE;
+	islocked = 0;
+    }
   done:			/* routine cleanup */
     if (volName)
 	free(volName);
@@ -4614,13 +4679,21 @@ UV_LockRelease(afs_int32 volid)
 
 }
 
-/*adds <server> and <part> as a readonly replication site for <volid>
-*in vldb */
+/* old interface to add rosites */
 int
 UV_AddSite(afs_int32 server, afs_int32 part, afs_int32 volid, afs_int32 valid)
 {
+    return UV_AddSite2(server, part, volid, 0, valid);
+}
+
+/*adds <server> and <part> as a readonly replication site for <volid>
+*in vldb */
+int
+UV_AddSite2(afs_int32 server, afs_int32 part, afs_uint32 volid,
+	    afs_uint32 rovolid, afs_int32 valid)
+{
     int j, nro = 0, islocked = 0;
-    struct nvldbentry entry, storeEntry;
+    struct nvldbentry entry, storeEntry, entry2;
     afs_int32 vcode, error = 0;
     char apartName[10];
 
@@ -4685,6 +4758,25 @@ UV_AddSite(afs_int32 server, afs_int32 part, afs_int32 volid, afs_int32 valid)
 		NMAXNSERVERS - 1);
 	error = VOLSERBADOP;
 	goto asfail;
+    }
+
+    /* if rovolid == 0, we leave the RO volume id alone. If the volume doesn't
+     * have an RO volid at this point (i.e. entry.volumeId[ROVOL] ==
+     * INVALID_BID) and we leave it alone, it gets an RO volid at release-time.
+     */
+    if (rovolid) {
+	if (entry.volumeId[ROVOL] == INVALID_BID) {
+	    vcode = VLDB_GetEntryByID(rovolid, -1, &entry2);
+	    if (!vcode) {
+		fprintf(STDERR, "Volume ID %d already exists\n", rovolid);
+		return VVOLEXISTS;
+	    }
+	    VPRINT1("Using RO volume id %d.\n", rovolid);
+	    entry.volumeId[ROVOL] = rovolid;
+	} else {
+	    fprintf(STDERR, "Ignoring given RO id %d, since volume already has RO id %d\n",
+		rovolid, entry.volumeId[ROVOL]);
+	}
     }
 
     VPRINT("Adding a new site ...");

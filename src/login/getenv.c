@@ -18,9 +18,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/login/Attic/getenv.c,v 1.4 2003/07/15 23:15:44 shadow Exp $");
-
 #include <stdio.h>
 
 /*

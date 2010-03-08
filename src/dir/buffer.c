@@ -10,8 +10,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/dir/buffer.c,v 1.16 2003/12/08 06:03:58 shadow Exp $");
 
 #include <stdlib.h>
 #include <lock.h>

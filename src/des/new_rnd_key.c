@@ -18,8 +18,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/des/new_rnd_key.c,v 1.13.2.3 2005/08/18 04:56:14 shadow Exp $");
 
 #ifndef KERNEL
 #include <stdio.h>

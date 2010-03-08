@@ -24,8 +24,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/fsprobe/fsprobe_callback.c,v 1.12 2003/07/15 23:15:08 shadow Exp $");
 
 #include <errno.h>
 #include <stdio.h>		/*Standard I/O stuff */

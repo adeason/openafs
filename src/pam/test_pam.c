@@ -10,8 +10,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/pam/test_pam.c,v 1.7.2.2 2009/04/27 18:33:04 shadow Exp $");
 
 #include <stdio.h>
 #include <security/pam_appl.h>

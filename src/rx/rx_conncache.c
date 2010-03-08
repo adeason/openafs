@@ -18,8 +18,6 @@
 #include <afs/param.h>
 #endif
 
-RCSID
-    ("$Header: /cvs/openafs/src/rx/rx_conncache.c,v 1.9.2.1 2004/08/25 07:09:41 shadow Exp $");
 
 #ifdef UKERNEL
 #include "afs/sysincludes.h"

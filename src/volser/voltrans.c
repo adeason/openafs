@@ -17,8 +17,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/volser/voltrans.c,v 1.10.2.5 2008/10/18 19:26:17 shadow Exp $");
 
 #ifdef AFS_NT40_ENV
 #include <afs/afsutil.h>
@@ -101,6 +99,7 @@ NewTrans(afs_int32 avol, afs_int32 apart)
     tt->time = FT_ApproxTime();
     tt->tid = transCounter++;
     tt->next = allTrans;
+    VTRANS_OBJ_LOCK_INIT(tt);
     allTrans = tt;
     VTRANS_UNLOCK;
     return tt;
@@ -150,6 +149,7 @@ DeleteTrans(register struct volser_trans *atrans, afs_int32 lock)
 	    if (tt->rxCallPtr)
 		rxi_CallError(tt->rxCallPtr, RX_CALL_DEAD);
 	    *lt = tt->next;
+	    VTRANS_OBJ_LOCK_DESTROY(tt);
 	    free(tt);
 	    if (lock) VTRANS_UNLOCK;
 	    return 0;

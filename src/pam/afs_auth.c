@@ -10,8 +10,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/pam/afs_auth.c,v 1.12.2.3 2009/04/27 18:33:04 shadow Exp $");
 
 #include <syslog.h>
 #include <stdlib.h>
@@ -177,8 +175,8 @@ pam_sm_authenticate(pam_handle_t * pamh, int flags, int argc,
     /* enhanced: use "ignore_uid <number>" to specify the largest uid
      * which should be ignored by this module
      */
-#if	defined(AFS_HPUX_ENV)
-#if     defined(AFS_HPUX110_ENV)
+#if	defined(AFS_HPUX_ENV) || defined(AFS_DARWIN100_ENV)
+#if     defined(AFS_HPUX110_ENV) || defined(AFS_DARWIN100_ENV)
     i = getpwnam_r(user, &unix_pwd, upwd_buf, sizeof(upwd_buf), &upwd);
 #else /* AFS_HPUX110_ENV */
     i = getpwnam_r(user, &unix_pwd, upwd_buf, sizeof(upwd_buf));

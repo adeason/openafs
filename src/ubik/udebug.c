@@ -10,8 +10,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/ubik/udebug.c,v 1.16.2.5 2008/05/10 15:24:04 jaltman Exp $");
 
 #include <sys/types.h>
 #include <stdlib.h>

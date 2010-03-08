@@ -1,5 +1,5 @@
 /*
- * $Id: osi_sleep.c,v 1.7.2.3 2008/01/04 17:53:37 rees Exp $
+ * $Id$
  */
 
 /*
@@ -44,8 +44,6 @@ such damages.
 #include <afsconfig.h>
 #include "afs/param.h"
 
-RCSID
-    ("$Header: /cvs/openafs/src/afs/OBSD/osi_sleep.c,v 1.7.2.3 2008/01/04 17:53:37 rees Exp $");
 
 #include "afs/sysincludes.h"	/* Standard vendor system headers */
 #include "afs/afsincludes.h"	/* Afs-based standard headers */

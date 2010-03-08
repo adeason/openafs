@@ -18,8 +18,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/sgistuff/rcmd.c,v 1.1.2.3 2009/04/27 19:17:42 shadow Exp $");
 
 #ifdef aiws /*AIX*/
 #include <sys/types.h>

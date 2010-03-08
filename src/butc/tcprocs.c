@@ -12,8 +12,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/butc/tcprocs.c,v 1.12.2.6 2008/03/10 22:35:34 shadow Exp $");
 
 #include <sys/types.h>
 #include <errno.h>

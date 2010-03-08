@@ -17,8 +17,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/kauth/test/multiklog.c,v 1.7.2.2 2007/10/31 04:13:40 shadow Exp $");
 
 #include <afs/stds.h>
 #include <sys/types.h>

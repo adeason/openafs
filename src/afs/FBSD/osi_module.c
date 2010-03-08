@@ -11,8 +11,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/afs/FBSD/osi_module.c,v 1.5.2.2 2005/05/23 21:23:53 shadow Exp $");
 
 #include <afs/sysincludes.h>
 #include <afsincludes.h>

@@ -14,8 +14,6 @@
 #include <afs/param.h>
 #endif
 
-RCSID
-    ("$Header: /cvs/openafs/src/ptserver/ptuser.c,v 1.16.2.18 2009/05/12 19:40:57 shadow Exp $");
 
 #if defined(UKERNEL)
 #include "afs/sysincludes.h"

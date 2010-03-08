@@ -19,8 +19,6 @@
 #include <linux/seq_file.h>
 #endif
 
-RCSID
-    ("$Header: /cvs/openafs/src/afs/LINUX/osi_groups.c,v 1.25.2.22 2009/07/01 20:57:15 shadow Exp $");
 
 #include "afs/sysincludes.h"
 #include "afsincludes.h"

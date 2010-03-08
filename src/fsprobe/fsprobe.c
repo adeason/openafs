@@ -16,8 +16,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/fsprobe/fsprobe.c,v 1.9.2.3 2008/08/16 19:15:47 shadow Exp $");
 
 
 #include <string.h>

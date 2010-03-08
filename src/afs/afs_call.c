@@ -10,8 +10,6 @@
 #include <afsconfig.h>
 #include "afs/param.h"
 
-RCSID
-    ("$Header: /cvs/openafs/src/afs/afs_call.c,v 1.74.2.34 2009/05/30 17:56:39 shadow Exp $");
 
 #include "afs/sysincludes.h"	/* Standard vendor system headers */
 #include "afsincludes.h"	/* Afs-based standard headers */
@@ -112,6 +110,10 @@ afs_int32 afs_rx_deadtime = AFS_RXDEADTIME;
 afs_int32 afs_rx_harddead = AFS_HARDDEADTIME;
 afs_int32 afs_rx_idledead = AFS_IDLEDEADTIME;
 
+#ifdef AFS_DARWIN100_ENV
+static int
+Afscall64_icl(int opcode, user_addr_t kp1, user_addr_t kp2, user_addr_t kp3, user_addr_t kp4, int *retval);
+#endif
 static int
   Afscall_icl(long opcode, long p1, long p2, long p3, long p4, long *retval);
 
@@ -518,11 +520,30 @@ wait_for_cachedefs(void) {
 #endif
 }
 
-/* leaving as is, probably will barf if we add prototypes here since it's likely being called
-with partial list */
+#ifdef AFS_DARWIN100_ENV
+#define AFSKPTR(X) k ## X
 int
-afs_syscall_call(parm, parm2, parm3, parm4, parm5, parm6)
-     long parm, parm2, parm3, parm4, parm5, parm6;
+afs_syscall_call(long parm, long parm2, long parm3,
+		 long parm4, long parm5, long parm6)
+{
+    return afs_syscall64_call(CAST_USER_ADDR_T((parm)),
+			      CAST_USER_ADDR_T((parm2)),
+			      CAST_USER_ADDR_T((parm3)),
+			      CAST_USER_ADDR_T((parm4)),
+			      CAST_USER_ADDR_T((parm5)),
+			      CAST_USER_ADDR_T((parm6)));
+}
+#else
+#define AFSKPTR(X) ((caddr_t)X)
+#endif
+int
+#ifdef AFS_DARWIN100_ENV
+afs_syscall64_call(user_addr_t kparm, user_addr_t kparm2, user_addr_t kparm3,
+		 user_addr_t kparm4, user_addr_t kparm5, user_addr_t kparm6)
+#else
+afs_syscall_call(long parm, long parm2, long parm3,
+		 long parm4, long parm5, long parm6)
+#endif
 {
     afs_int32 code = 0;
 #if defined(AFS_SGI61_ENV) || defined(AFS_SUN57_ENV) || defined(AFS_DARWIN_ENV) || defined(AFS_XBSD_ENV)
@@ -530,6 +551,15 @@ afs_syscall_call(parm, parm2, parm3, parm4, parm5, parm6)
 #else /* AFS_SGI61_ENV */
     u_int bufferSize;
 #endif /* AFS_SGI61_ENV */
+#ifdef AFS_DARWIN100_ENV
+    /* AFSKPTR macro relies on this name format/mapping */
+    afs_uint32 parm = (afs_uint32)kparm;
+    afs_uint32 parm2 = (afs_uint32)kparm2;
+    afs_uint32 parm3 = (afs_uint32)kparm3;
+    afs_uint32 parm4 = (afs_uint32)kparm4;
+    afs_uint32 parm5 = (afs_uint32)kparm5;
+    afs_uint32 parm6 = (afs_uint32)kparm6;
+#endif
 
     AFS_STATCNT(afs_syscall_call);
     if (
@@ -714,13 +744,13 @@ afs_syscall_call(parm, parm2, parm3, parm4, parm5, parm6)
 	 * home cell flag (0x1 bit) and the nosuid flag (0x2 bit) */
 	struct afsop_cell *tcell = afs_osi_Alloc(sizeof(struct afsop_cell));
 
-	AFS_COPYIN((char *)parm2, (char *)tcell->hosts, sizeof(tcell->hosts),
+	AFS_COPYIN(AFSKPTR(parm2), (caddr_t)tcell->hosts, sizeof(tcell->hosts),
 		   code);
 	if (!code) {
 	    if (parm4 > sizeof(tcell->cellName))
 		code = EFAULT;
 	    else {
-		AFS_COPYIN((char *)parm3, tcell->cellName, parm4, code);
+	      AFS_COPYIN(AFSKPTR(parm3), (caddr_t)tcell->cellName, parm4, code);
 		if (!code)
 		    afs_NewCell(tcell->cellName, tcell->hosts, parm5, NULL, 0,
 				0, 0);
@@ -739,14 +769,14 @@ afs_syscall_call(parm, parm2, parm3, parm4, parm5, parm6)
 	    afs_osi_Sleep(&afs_initState);
 #endif
 
-	AFS_COPYIN((char *)parm2, (char *)tcell->hosts, sizeof(tcell->hosts),
+	AFS_COPYIN(AFSKPTR(parm2), (caddr_t)tcell->hosts, sizeof(tcell->hosts),
 		   code);
 	if (!code) {
-	    AFS_COPYINSTR((char *)parm3, tbuffer1, AFS_SMALLOCSIZ,
+	    AFS_COPYINSTR(AFSKPTR(parm3), tbuffer1, AFS_SMALLOCSIZ,
 			  &bufferSize, code);
 	    if (!code) {
 		if (parm4 & 4) {
-		    AFS_COPYINSTR((char *)parm5, tbuffer, AFS_SMALLOCSIZ,
+		    AFS_COPYINSTR(AFSKPTR(parm5), tbuffer, AFS_SMALLOCSIZ,
 				  &bufferSize, code);
 		    if (!code) {
 			lcnamep = tbuffer;
@@ -771,10 +801,10 @@ afs_syscall_call(parm, parm2, parm3, parm4, parm5, parm6)
 	char *aliasName = osi_AllocSmallSpace(AFS_SMALLOCSIZ);
 	char *cellName = osi_AllocSmallSpace(AFS_SMALLOCSIZ);
 
-	AFS_COPYINSTR((char *)parm2, aliasName, AFS_SMALLOCSIZ, &bufferSize,
+	AFS_COPYINSTR(AFSKPTR(parm2), aliasName, AFS_SMALLOCSIZ, &bufferSize,
 		      code);
 	if (!code)
-	    AFS_COPYINSTR((char *)parm3, cellName, AFS_SMALLOCSIZ,
+	    AFS_COPYINSTR(AFSKPTR(parm3), cellName, AFS_SMALLOCSIZ,
 			  &bufferSize, code);
 	if (!code)
 	    afs_NewCellAlias(aliasName, cellName);
@@ -787,7 +817,7 @@ afs_syscall_call(parm, parm2, parm3, parm4, parm5, parm6)
 	 */
 	char *cell = osi_AllocSmallSpace(AFS_SMALLOCSIZ);
 
-	AFS_COPYINSTR((char *)parm2, cell, AFS_SMALLOCSIZ, &bufferSize, code);
+	AFS_COPYINSTR(AFSKPTR(parm2), cell, AFS_SMALLOCSIZ, &bufferSize, code);
 	if (!code)
 	    afs_SetPrimaryCell(cell);
 	osi_FreeSmallSpace(cell);
@@ -797,7 +827,7 @@ afs_syscall_call(parm, parm2, parm3, parm4, parm5, parm6)
 	if (afs_CacheInit_Done)
 	    goto out;
 
-	AFS_COPYIN((char *)parm2, (caddr_t) & cparms, sizeof(cparms), code);
+	AFS_COPYIN(AFSKPTR(parm2), (caddr_t) & cparms, sizeof(cparms), code);
 	if (code) {
 #if defined(KERNEL_HAVE_UERROR)
 	    setuerror(code);
@@ -857,7 +887,7 @@ afs_syscall_call(parm, parm2, parm3, parm4, parm5, parm6)
 	    afs_osi_Sleep(&afs_initState);
 
 	if (parm2) {
-	    AFS_COPYINSTR((char *)parm2, afs_rootVolumeName,
+	    AFS_COPYINSTR(AFSKPTR(parm2), afs_rootVolumeName,
 			  sizeof(afs_rootVolumeName), &bufferSize, code);
 	    afs_rootVolumeName[sizeof(afs_rootVolumeName) - 1] = 0;
 	} else
@@ -868,7 +898,7 @@ afs_syscall_call(parm, parm2, parm3, parm4, parm5, parm6)
 	char *tbuffer = osi_AllocSmallSpace(AFS_SMALLOCSIZ);
 
 	code = 0;
-	AFS_COPYINSTR((char *)parm2, tbuffer, AFS_SMALLOCSIZ, &bufferSize,
+	AFS_COPYINSTR(AFSKPTR(parm2), tbuffer, AFS_SMALLOCSIZ, &bufferSize,
 		      code);
 	if (code) {
 	    osi_FreeSmallSpace(tbuffer);
@@ -976,39 +1006,43 @@ afs_syscall_call(parm, parm2, parm3, parm4, parm5, parm6)
 	    count = AFS_MAX_INTERFACE_ADDR;
 	}
 
-	AFS_COPYIN((char *)parm3, (char *)buffer, count * sizeof(afs_int32),
+	AFS_COPYIN(AFSKPTR(parm3), (caddr_t)buffer, count * sizeof(afs_int32),
 		   code);
-	if (parm4)
-	    AFS_COPYIN((char *)parm4, (char *)maskbuffer,
+	if (parm4 && !code)
+	    AFS_COPYIN(AFSKPTR(parm4), (caddr_t)maskbuffer,
 		       count * sizeof(afs_int32), code);
-	if (parm5)
-	    AFS_COPYIN((char *)parm5, (char *)mtubuffer,
+	if (parm5 && !code)
+	    AFS_COPYIN(AFSKPTR(parm5), (caddr_t)mtubuffer,
 		       count * sizeof(afs_int32), code);
 
-	afs_cb_interface.numberOfInterfaces = count;
-	for (i = 0; i < count; i++) {
-	    afs_cb_interface.addr_in[i] = buffer[i];
+	if (!code) {
+	    afs_cb_interface.numberOfInterfaces = count;
+	    for (i = 0; i < count; i++) {
+		afs_cb_interface.addr_in[i] = buffer[i];
 #ifdef AFS_USERSPACE_IP_ADDR
-	    /* AFS_USERSPACE_IP_ADDR means we have no way of finding the
-	     * machines IP addresses when in the kernel (the in_ifaddr
-	     * struct is not available), so we pass the info in at
-	     * startup. We also pass in the subnetmask and mtu size. The
-	     * subnetmask is used when setting the rank:
-	     * afsi_SetServerIPRank(); and the mtu size is used when
-	     * finding the best mtu size. rxi_FindIfnet() is replaced
-	     * with rxi_Findcbi().
-	     */
-	    afs_cb_interface.subnetmask[i] =
-		(parm4 ? maskbuffer[i] : 0xffffffff);
-	    afs_cb_interface.mtu[i] = (parm5 ? mtubuffer[i] : htonl(1500));
+		/* AFS_USERSPACE_IP_ADDR means we have no way of finding the
+		 * machines IP addresses when in the kernel (the in_ifaddr
+		 * struct is not available), so we pass the info in at
+		 * startup. We also pass in the subnetmask and mtu size. The
+		 * subnetmask is used when setting the rank:
+		 * afsi_SetServerIPRank(); and the mtu size is used when
+		 * finding the best mtu size. rxi_FindIfnet() is replaced
+		 * with rxi_Findcbi().
+		 */
+		afs_cb_interface.subnetmask[i] =
+		    (parm4 ? maskbuffer[i] : 0xffffffff);
+		afs_cb_interface.mtu[i] = (parm5 ? mtubuffer[i] : htonl(1500));
 #endif
-	}
-	rxi_setaddr(buffer[0]);
-	if (!refresh) {
-	    if (rxbind)
-		rx_bindhost = buffer[0];
-	    else
-		rx_bindhost = htonl(INADDR_ANY);
+	    }
+	    rxi_setaddr(buffer[0]);
+	    if (!refresh) {
+		if (rxbind)
+		    rx_bindhost = buffer[0];
+		else
+		    rx_bindhost = htonl(INADDR_ANY);
+	    }
+	} else {
+	    refresh = 0;
 	}
 
 	afs_osi_Free(buffer, sizeof(afs_int32) * AFS_MAX_INTERFACE_ADDR);
@@ -1084,8 +1118,8 @@ afs_syscall_call(parm, parm2, parm3, parm4, parm5, parm6)
 #endif /* else AFS_USERSPACE_IP_ADDR */
 #endif /* !AFS_SUN5_ENV */
 	if (!code)
-	    AFS_COPYOUT((caddr_t) & mtu, (caddr_t) parm3, sizeof(afs_int32),
-			code);
+	    AFS_COPYOUT((caddr_t) & mtu, AFSKPTR(parm3),
+			sizeof(afs_int32), code);
 #ifdef AFS_AIX32_ENV
 /* this is disabled for now because I can't figure out how to get access
  * to these kernel variables.  It's only for supporting user-mode rx
@@ -1122,8 +1156,8 @@ afs_syscall_call(parm, parm2, parm3, parm4, parm5, parm6)
 #endif /* else AFS_USERSPACE_IP_ADDR */
 #endif /* !AFS_SUN5_ENV */
 	if (!code)
-	    AFS_COPYOUT((caddr_t) & mask, (caddr_t) parm3, sizeof(afs_int32),
-			code);
+	    AFS_COPYOUT((caddr_t) & mask, AFSKPTR(parm3),
+			sizeof(afs_int32), code);
     }
 #ifdef AFS_AFSDB_ENV
     else if (parm == AFSOP_AFSDB_HANDLER) {
@@ -1136,8 +1170,8 @@ afs_syscall_call(parm, parm2, parm3, parm4, parm5, parm6)
 #ifndef UKERNEL
 	afs_osi_MaskUserLoop();
 #endif
-	AFS_COPYIN((afs_int32 *) parm2, cellname, cellLen, code);
-	AFS_COPYIN((afs_int32 *) parm3, kmsg, kmsgLen, code);
+	AFS_COPYIN(AFSKPTR(parm2), cellname, cellLen, code);
+	AFS_COPYIN(AFSKPTR(parm3), kmsg, kmsgLen, code);
 	if (!code) {
 	    code = afs_AFSDBHandler(cellname, cellLen, kmsg);
 	    if (*cellname == 1)
@@ -1148,7 +1182,7 @@ afs_syscall_call(parm, parm2, parm3, parm4, parm5, parm6)
 	    }
 	}
 	if (!code)
-	    AFS_COPYOUT(cellname, (char *)parm2, cellLen, code);
+	    AFS_COPYOUT(cellname, AFSKPTR(parm2), cellLen, code);
 	afs_osi_Free(kmsg, kmsgLen);
 	afs_osi_Free(cellname, cellLen);
     }
@@ -1164,9 +1198,10 @@ afs_syscall_call(parm, parm2, parm3, parm4, parm5, parm6)
 	rx_extraPackets = parm2;
 	afscall_set_rxpck_received = 1;
     } else if (parm == AFSOP_SET_RXMAXMTU) {
-    rx_MyMaxSendSize = rx_maxReceiveSizeUser = rx_maxReceiveSize = parm2;
-    } else
+	rx_MyMaxSendSize = rx_maxReceiveSizeUser = rx_maxReceiveSize = parm2;
+    } else {
 	code = EINVAL;
+    }
 
   out:
     AFS_GUNLOCK();
@@ -1346,10 +1381,10 @@ Afs_syscall(struct afsargs *uap, rval_t * rvp)
 #else /* AFS_SGI_ENV */
 
 struct iparam {
-    long param1;
-    long param2;
-    long param3;
-    long param4;
+    iparmtype param1;
+    iparmtype param2;
+    iparmtype param3;
+    iparmtype param4;
 };
 
 struct iparam32 {
@@ -1360,20 +1395,32 @@ struct iparam32 {
 };
 
 
-#if defined(AFS_HPUX_64BIT_ENV) || defined(AFS_SUN57_64BIT_ENV) || (defined(AFS_LINUX_64BIT_KERNEL) && !defined(AFS_ALPHA_LINUX20_ENV) && !defined(AFS_IA64_LINUX20_ENV))
+#if defined(AFS_HPUX_64BIT_ENV) || defined(AFS_SUN57_64BIT_ENV) || (defined(AFS_LINUX_64BIT_KERNEL) && !defined(AFS_ALPHA_LINUX20_ENV) && !defined(AFS_IA64_LINUX20_ENV)) || defined(NEED_IOCTL32)
+#if SIZEOF_VOID_P == SIZEOF_UNSIGNED_INT
+# define uintptrsz unsigned int
+#elif SIZEOF_VOID_P == SIZEOF_UNSIGNED_LONG
+# define uintptrsz unsigned long
+#elif SIZEOF_VOID_P == SIZEOF_UNSIGNED_LONG_LONG
+# define uintptrsz unsigned long long
+#else
+# error "Unable to determine casting for pointers"
+#endif
 static void
 iparam32_to_iparam(const struct iparam32 *src, struct iparam *dst)
 {
-    dst->param1 = src->param1;
-    dst->param2 = src->param2;
-    dst->param3 = src->param3;
-    dst->param4 = src->param4;
+    dst->param1 = (iparmtype)(uintptrsz)src->param1;
+    dst->param2 = (iparmtype)(uintptrsz)src->param2;
+    dst->param3 = (iparmtype)(uintptrsz)src->param3;
+    dst->param4 = (iparmtype)(uintptrsz)src->param4;
 }
 #endif
 
 /*
  * If you need to change copyin_iparam(), you may also need to change
  * copyin_afs_ioctl().
+ *
+ * This function is needed only for icreate, meaning, only on platforms
+ * providing the inode fileserver.
  */
 
 static int
@@ -1482,7 +1529,31 @@ Afs_syscall(register struct afssysa *uap, rval_t * rvp)
 {
     int *retval = &rvp->r_val1;
 #else /* AFS_SUN5_ENV */
-#if	defined(AFS_OSF_ENV) || defined(AFS_DARWIN_ENV) || defined(AFS_XBSD_ENV)
+#ifdef AFS_DARWIN100_ENV
+struct afssysa {
+    afs_int32 syscall;
+    afs_int32 parm1;
+    afs_int32 parm2;
+    afs_int32 parm3;
+    afs_int32 parm4;
+    afs_int32 parm5;
+    afs_int32 parm6;
+};
+struct afssysa64 {
+    afs_int64 parm1;
+    afs_int64 parm2;
+    afs_int64 parm3;
+    afs_int64 parm4;
+    afs_int64 parm5;
+    afs_int64 parm6;
+    afs_int32 syscall;
+};
+int
+afs3_syscall(struct proc *p, void *args, unsigned int *retval)
+{
+    struct afssysa64 *uap64 = NULL;
+    struct afssysa *uap = NULL;
+#elif  defined(AFS_OSF_ENV) || defined(AFS_DARWIN_ENV) || defined(AFS_XBSD_ENV)
 int
 afs3_syscall(p, args, retval)
 #ifdef AFS_FBSD50_ENV
@@ -1616,148 +1687,167 @@ Afs_syscall()
 #if defined(AFS_DARWIN80_ENV)
     get_vfs_context();
     osi_Assert(*retval == 0);
+#ifdef AFS_DARWIN100_ENV
+    if (proc_is64bit(p)) {
+	uap64 = (struct afssysa64 *)args;
+	if (uap64->syscall == AFSCALL_CALL) {
+	    code =
+		afs_syscall64_call(uap64->parm1, uap64->parm2, uap64->parm3,
+				   uap64->parm4, uap64->parm5, uap64->parm6);
+	} else if (uap64->syscall == AFSCALL_SETPAG) {
+	    AFS_GLOCK();
+	    code = afs_setpag(p, args, retval);
+	    AFS_GUNLOCK();
+	} else if (uap64->syscall == AFSCALL_PIOCTL) {
+	    AFS_GLOCK();
+	    code =
+		afs_syscall64_pioctl(uap64->parm1, (unsigned int)uap64->parm2,
+				     uap64->parm3, (int)uap64->parm4,
+				     kauth_cred_get());
+	    AFS_GUNLOCK();
+	} else if (uap64->syscall == AFSCALL_ICL) {
+	    AFS_GLOCK();
+	    code =
+		Afscall64_icl(uap64->parm1, uap64->parm2, uap64->parm3,
+			      uap64->parm4, uap64->parm5, retval);
+	    AFS_GUNLOCK();
+	} else
+	    code = EINVAL;
+	if (uap64->syscall != AFSCALL_CALL)
+	    put_vfs_context();
+    } else { /* and the default case for 32 bit procs */
+#endif
+       uap = (struct afssysa *)args;
 #endif
 #if defined(AFS_HPUX_ENV)
-    /*
-     * There used to be code here (duplicated from osi_Init()) for
-     * initializing the semaphore used by AFS_GLOCK().  Was the
-     * duplication to handle the case of a dynamically loaded kernel
-     * module?
-     */
-    osi_InitGlock();
+       /*
+	* There used to be code here (duplicated from osi_Init()) for
+	* initializing the semaphore used by AFS_GLOCK().  Was the
+	* duplication to handle the case of a dynamically loaded kernel
+	* module?
+	*/
+       osi_InitGlock();
 #endif
-    if (uap->syscall == AFSCALL_CALL) {
+       if (uap->syscall == AFSCALL_CALL) {
+	   code =
+	       afs_syscall_call(uap->parm1, uap->parm2, uap->parm3, uap->parm4,
+				uap->parm5, uap->parm6);
+       } else if (uap->syscall == AFSCALL_SETPAG) {
 #ifdef	AFS_SUN5_ENV
-	code =
-	    afs_syscall_call(uap->parm1, uap->parm2, uap->parm3, uap->parm4,
-			     uap->parm5, uap->parm6, rvp, CRED());
+	   register proc_t *procp;
+	   
+	   procp = ttoproc(curthread);
+	   AFS_GLOCK();
+	   code = afs_setpag(&procp->p_cred);
+	   AFS_GUNLOCK();
 #else
-	code =
-	    afs_syscall_call(uap->parm1, uap->parm2, uap->parm3, uap->parm4,
-			     uap->parm5, uap->parm6);
-#endif
-    } else if (uap->syscall == AFSCALL_SETPAG) {
-#ifdef	AFS_SUN5_ENV
-	register proc_t *procp;
-
-	procp = ttoproc(curthread);
-	AFS_GLOCK();
-	code = afs_setpag(&procp->p_cred);
-	AFS_GUNLOCK();
-#else
-	AFS_GLOCK();
+	   AFS_GLOCK();
 #if	defined(AFS_OSF_ENV) || defined(AFS_DARWIN_ENV) || defined(AFS_XBSD_ENV)
-	code = afs_setpag(p, args, retval);
+	   code = afs_setpag(p, args, retval);
 #else /* AFS_OSF_ENV */
-	code = afs_setpag();
+	   code = afs_setpag();
 #endif
-	AFS_GUNLOCK();
+	   AFS_GUNLOCK();
 #endif
-    } else if (uap->syscall == AFSCALL_PIOCTL) {
-	AFS_GLOCK();
+       } else if (uap->syscall == AFSCALL_PIOCTL) {
+	   AFS_GLOCK();
 #if defined(AFS_SUN5_ENV)
-	code =
-	    afs_syscall_pioctl(uap->parm1, uap->parm2, uap->parm3, uap->parm4,
-			       rvp, CRED());
+	   code =
+	       afs_syscall_pioctl(uap->parm1, uap->parm2, uap->parm3, 
+				  uap->parm4, rvp, CRED());
 #elif defined(AFS_FBSD50_ENV)
-	code =
-	    afs_syscall_pioctl(uap->parm1, uap->parm2, uap->parm3, uap->parm4,
-			       p->td_ucred);
+	   code =
+	       afs_syscall_pioctl(uap->parm1, uap->parm2, uap->parm3, 
+				  uap->parm4, p->td_ucred);
 #elif defined(AFS_DARWIN80_ENV)
-	code =
-	    afs_syscall_pioctl(uap->parm1, uap->parm2, uap->parm3, uap->parm4,
-			       kauth_cred_get());
+	   code =
+	       afs_syscall_pioctl(uap->parm1, uap->parm2, uap->parm3, 
+				  uap->parm4, kauth_cred_get());
 #elif defined(AFS_DARWIN_ENV) || defined(AFS_XBSD_ENV)
-	code =
-	    afs_syscall_pioctl(uap->parm1, uap->parm2, uap->parm3, uap->parm4,
-			       p->p_cred->pc_ucred);
+	   code =
+	       afs_syscall_pioctl(uap->parm1, uap->parm2, uap->parm3, 
+				  uap->parm4, p->p_cred->pc_ucred);
 #else
-	code =
-	    afs_syscall_pioctl(uap->parm1, uap->parm2, uap->parm3,
-			       uap->parm4);
+	   code =
+               afs_syscall_pioctl((char *) uap->parm1,(unsigned int) uap->parm2,
+                                  (caddr_t) uap->parm3,(int) uap->parm4);
 #endif
-	AFS_GUNLOCK();
-    } else if (uap->syscall == AFSCALL_ICREATE) {
-	struct iparam iparams;
-
-	code = copyin_iparam((char *)uap->parm3, &iparams);
-	if (code) {
+	   AFS_GUNLOCK();
+       } else if (uap->syscall == AFSCALL_ICREATE) {
+	   struct iparam iparams;
+	   
+	   code = copyin_iparam((char *)uap->parm3, &iparams);
+	   if (code) {
 #if defined(KERNEL_HAVE_UERROR)
-	    setuerror(code);
+	       setuerror(code);
 #endif
-	} else
-#ifdef	AFS_SUN5_ENV
-	    code =
-		afs_syscall_icreate(uap->parm1, uap->parm2, iparams.param1,
-				    iparams.param2, iparams.param3,
-				    iparams.param4, rvp, CRED());
-#else
-	    code =
-		afs_syscall_icreate(uap->parm1, uap->parm2, iparams.param1,
-				    iparams.param2,
-#if defined(AFS_OSF_ENV) || defined(AFS_DARWIN_ENV) || defined(AFS_XBSD_ENV)
-				    iparams.param3, iparams.param4, retval);
-#else
-				    iparams.param3, iparams.param4);
+	   } else {
+	       code =
+		   afs_syscall_icreate(uap->parm1, uap->parm2, iparams.param1,
+				       iparams.param2, iparams.param3, 
+				       iparams.param4
+#ifdef AFS_SUN5_ENV
+				   , rvp, CRED()
+#elif defined(AFS_OSF_ENV) || defined(AFS_DARWIN_ENV) || defined(AFS_XBSD_ENV)
+				   , retval
 #endif
-#endif /* AFS_SUN5_ENV */
-    } else if (uap->syscall == AFSCALL_IOPEN) {
+		   );
+	   }
+       } else if (uap->syscall == AFSCALL_IOPEN) {
+	   code =
+	       afs_syscall_iopen(uap->parm1, uap->parm2, uap->parm3
 #ifdef	AFS_SUN5_ENV
-	code =
-	    afs_syscall_iopen(uap->parm1, uap->parm2, uap->parm3, rvp,
-			      CRED());
-#else
-#if defined(AFS_OSF_ENV) || defined(AFS_DARWIN_ENV) || defined(AFS_XBSD_ENV)
-	code = afs_syscall_iopen(uap->parm1, uap->parm2, uap->parm3, retval);
-#else
-	code = afs_syscall_iopen(uap->parm1, uap->parm2, uap->parm3);
+				 , rvp, CRED()
+#elif defined(AFS_OSF_ENV) || defined(AFS_DARWIN_ENV) || defined(AFS_XBSD_ENV)
+				 , retval
 #endif
-#endif /* AFS_SUN5_ENV */
-    } else if (uap->syscall == AFSCALL_IDEC) {
+		   );
+       } else if (uap->syscall == AFSCALL_IDEC) {
+	   code =
+	       afs_syscall_iincdec(uap->parm1, uap->parm2, uap->parm3, -1
 #ifdef	AFS_SUN5_ENV
-	code =
-	    afs_syscall_iincdec(uap->parm1, uap->parm2, uap->parm3, -1, rvp,
-				CRED());
-#else
-	code = afs_syscall_iincdec(uap->parm1, uap->parm2, uap->parm3, -1);
-#endif /* AFS_SUN5_ENV */
-    } else if (uap->syscall == AFSCALL_IINC) {
+				   , rvp, CRED()
+#endif
+		   );
+       } else if (uap->syscall == AFSCALL_IINC) {
+	   code =
+	       afs_syscall_iincdec(uap->parm1, uap->parm2, uap->parm3, 1
 #ifdef	AFS_SUN5_ENV
-	code =
-	    afs_syscall_iincdec(uap->parm1, uap->parm2, uap->parm3, 1, rvp,
-				CRED());
-#else
-	code = afs_syscall_iincdec(uap->parm1, uap->parm2, uap->parm3, 1);
-#endif /* AFS_SUN5_ENV */
-    } else if (uap->syscall == AFSCALL_ICL) {
-	AFS_GLOCK();
-	code =
-	    Afscall_icl(uap->parm1, uap->parm2, uap->parm3, uap->parm4,
-			uap->parm5, retval);
-	AFS_GUNLOCK();
+				   , rvp, CRED()
+#endif
+		   );
+       } else if (uap->syscall == AFSCALL_ICL) {
+	   AFS_GLOCK();
+	   code =
+	       Afscall_icl(uap->parm1, uap->parm2, uap->parm3, uap->parm4,
+			   uap->parm5, retval);
+	   AFS_GUNLOCK();
 #ifdef AFS_LINUX20_ENV
-	if (!code) {
-	    /* ICL commands can return values. */
-	    code = -linux_ret;	/* Gets negated again at exit below */
-	}
+	   if (!code) {
+	       /* ICL commands can return values. */
+	       code = -linux_ret;	/* Gets negated again at exit below */
+	   }
 #else
-	if (code) {
+	   if (code) {
 #if defined(KERNEL_HAVE_UERROR)
-	    setuerror(code);
+	       setuerror(code);
 #endif
-	}
+	   }
 #endif /* !AFS_LINUX20_ENV */
-    } else {
+       } else {
 #if defined(KERNEL_HAVE_UERROR)
-	setuerror(EINVAL);
+	   setuerror(EINVAL);
 #else
-	code = EINVAL;
+	   code = EINVAL;
 #endif
-    }
-
+       }
+       
 #if defined(AFS_DARWIN80_ENV)
-    if (uap->syscall != AFSCALL_CALL)
-	put_vfs_context();
+       if (uap->syscall != AFSCALL_CALL)
+	   put_vfs_context();
+#ifdef AFS_DARWIN100_ENV
+    } /* 32 bit procs */
+#endif
 #endif
 #ifdef AFS_LINUX20_ENV
     code = -code;
@@ -1894,6 +1984,20 @@ afs_shutdown(void)
     shutdown_bufferpackage();
     shutdown_cache();
     shutdown_osi();
+    /*
+     * Close file only after daemons which can write to it are stopped.
+     * Need to close before the osinet shutdown to avoid failing check
+     * for dangling memory allocations.
+     */
+    if (afs_cacheInodep) {	/* memcache won't set this */
+	osi_UFSClose(afs_cacheInodep);	/* Since we always leave it open */
+	afs_cacheInodep = 0;
+    }
+    /*
+     * Shutdown the ICL logs - needed to free allocated memory space and avoid
+     * warnings from shutdown_osinet
+     */
+    shutdown_icl();
     shutdown_osinet();
     shutdown_osifile();
     shutdown_vnodeops();
@@ -1910,12 +2014,6 @@ afs_shutdown(void)
     memset(&afs_stats_cmfullperf, 0, sizeof(struct afs_stats_CMFullPerf));
 */
     afs_warn(" ALL allocated tables\n");
-
-    /* Close file only after daemons which can write to it are stopped. */
-    if (afs_cacheInodep) {	/* memcache won't set this */
-	osi_UFSClose(afs_cacheInodep);	/* Since we always leave it open */
-	afs_cacheInodep = 0;
-    }
 
     afs_shuttingdown = 0;
 
@@ -1972,8 +2070,28 @@ extern struct afs_icl_log *afs_icl_FindLog();
 extern struct afs_icl_set *afs_icl_FindSet();
 
 
+#ifdef AFS_DARWIN100_ENV
+#define AFSKPTR(X) k ## X
 static int
 Afscall_icl(long opcode, long p1, long p2, long p3, long p4, long *retval)
+{
+    return Afscall64_icl(opcode,
+			 CAST_USER_ADDR_T((p1)),
+			 CAST_USER_ADDR_T((p2)),
+			 CAST_USER_ADDR_T((p3)),
+			 CAST_USER_ADDR_T((p4)),
+			 retval);
+}
+#else
+#define AFSKPTR(X) ((caddr_t)X)
+#endif
+
+static int
+#ifdef AFS_DARWIN100_ENV
+Afscall64_icl(int opcode, user_addr_t kp1, user_addr_t kp2, user_addr_t kp3, user_addr_t kp4, int *retval)
+#else
+Afscall_icl(long opcode, long p1, long p2, long p3, long p4, long *retval)
+#endif
 {
     afs_int32 *lp, elts, flags;
     register afs_int32 code;
@@ -1992,6 +2110,12 @@ Afscall_icl(long opcode, long p1, long p2, long p3, long p4, long *retval)
     afs_int32 startCookie;
     afs_int32 allocated;
     struct afs_icl_log *tlp;
+#ifdef AFS_DARWIN100_ENV
+    afs_uint32 p1 = (afs_uint32)kp1;
+    afs_uint32 p2 = (afs_uint32)kp2;
+    afs_uint32 p3 = (afs_uint32)kp3;
+    afs_uint32 p4 = (afs_uint32)kp4;
+#endif
 
 #ifdef	AFS_SUN5_ENV
     if (!afs_suser(CRED())) {	/* only root can run this code */
@@ -2015,10 +2139,10 @@ Afscall_icl(long opcode, long p1, long p2, long p3, long p4, long *retval)
 	 * updates cookie to updated start (not end) if we had to
 	 * skip some records.
 	 */
-	AFS_COPYINSTR((char *)p1, tname, sizeof(tname), &temp, code);
+	AFS_COPYINSTR(AFSKPTR(p1), tname, sizeof(tname), &temp, code);
 	if (code)
 	    return code;
-	AFS_COPYIN((char *)p4, (char *)&startCookie, sizeof(afs_int32), code);
+	AFS_COPYIN(AFSKPTR(p4), (char *)&startCookie, sizeof(afs_int32), code);
 	if (code)
 	    return code;
 	logp = afs_icl_FindLog(tname);
@@ -2037,10 +2161,10 @@ Afscall_icl(long opcode, long p1, long p2, long p3, long p4, long *retval)
 	    osi_FreeLargeSpace((struct osi_buffer *)lp);
 	    break;
 	}
-	AFS_COPYOUT((char *)lp, (char *)p2, elts * sizeof(afs_int32), code);
+	AFS_COPYOUT((char *)lp, AFSKPTR(p2), elts * sizeof(afs_int32), code);
 	if (code)
 	    goto done;
-	AFS_COPYOUT((char *)&startCookie, (char *)p4, sizeof(afs_int32),
+	AFS_COPYOUT((char *)&startCookie, AFSKPTR(p4), sizeof(afs_int32),
 		    code);
 	if (code)
 	    goto done;
@@ -2068,9 +2192,9 @@ Afscall_icl(long opcode, long p1, long p2, long p3, long p4, long *retval)
 	temp = strlen(tlp->name) + 1;
 	if (temp > p3)
 	    return EINVAL;
-	AFS_COPYOUT(tlp->name, (char *)p2, temp, code);
+	AFS_COPYOUT(tlp->name, AFSKPTR(p2), temp, code);
 	if (!code)		/* copy out size of log */
-	    AFS_COPYOUT((char *)&tlp->logSize, (char *)p4, sizeof(afs_int32),
+	    AFS_COPYOUT((char *)&tlp->logSize, AFSKPTR(p4), sizeof(afs_int32),
 			code);
 	break;
 
@@ -2078,7 +2202,7 @@ Afscall_icl(long opcode, long p1, long p2, long p3, long p4, long *retval)
 	/* enumerate logs: p1=setname, p2=index, p3=&name, p4=sizeof(name).
 	 * return 0 for success, otherwise error.
 	 */
-	AFS_COPYINSTR((char *)p1, tname, sizeof(tname), &temp, code);
+	AFS_COPYINSTR(AFSKPTR(p1), tname, sizeof(tname), &temp, code);
 	if (code)
 	    return code;
 	setp = afs_icl_FindSet(tname);
@@ -2091,12 +2215,12 @@ Afscall_icl(long opcode, long p1, long p2, long p3, long p4, long *retval)
 	temp = strlen(tlp->name) + 1;
 	if (temp > p4)
 	    return EINVAL;
-	AFS_COPYOUT(tlp->name, (char *)p3, temp, code);
+	AFS_COPYOUT(tlp->name, AFSKPTR(p3), temp, code);
 	break;
 
     case ICL_OP_CLRLOG:	/* clear specified log */
 	/* zero out the specified log: p1=logname */
-	AFS_COPYINSTR((char *)p1, tname, sizeof(tname), &temp, code);
+	AFS_COPYINSTR(AFSKPTR(p1), tname, sizeof(tname), &temp, code);
 	if (code)
 	    return code;
 	logp = afs_icl_FindLog(tname);
@@ -2108,7 +2232,7 @@ Afscall_icl(long opcode, long p1, long p2, long p3, long p4, long *retval)
 
     case ICL_OP_CLRSET:	/* clear specified set */
 	/* zero out the specified set: p1=setname */
-	AFS_COPYINSTR((char *)p1, tname, sizeof(tname), &temp, code);
+	AFS_COPYINSTR(AFSKPTR(p1), tname, sizeof(tname), &temp, code);
 	if (code)
 	    return code;
 	setp = afs_icl_FindSet(tname);
@@ -2150,15 +2274,15 @@ Afscall_icl(long opcode, long p1, long p2, long p3, long p4, long *retval)
 	temp = strlen(setp->name) + 1;
 	if (temp > p3)
 	    return EINVAL;
-	AFS_COPYOUT(setp->name, (char *)p2, temp, code);
+	AFS_COPYOUT(setp->name, AFSKPTR(p2), temp, code);
 	if (!code)		/* copy out size of log */
-	    AFS_COPYOUT((char *)&setp->states, (char *)p4, sizeof(afs_int32),
+	    AFS_COPYOUT((char *)&setp->states, AFSKPTR(p4), sizeof(afs_int32),
 			code);
 	break;
 
     case ICL_OP_SETSTAT:	/* set status on a set */
 	/* activate the specified set: p1=setname, p2=op */
-	AFS_COPYINSTR((char *)p1, tname, sizeof(tname), &temp, code);
+	AFS_COPYINSTR(AFSKPTR(p1), tname, sizeof(tname), &temp, code);
 	if (code)
 	    return code;
 	setp = afs_icl_FindSet(tname);
@@ -2189,7 +2313,7 @@ Afscall_icl(long opcode, long p1, long p2, long p3, long p4, long *retval)
 
     case ICL_OP_SETLOGSIZE:	/* set size of log */
 	/* set the size of the specified log: p1=logname, p2=size (in words) */
-	AFS_COPYINSTR((char *)p1, tname, sizeof(tname), &temp, code);
+	AFS_COPYINSTR(AFSKPTR(p1), tname, sizeof(tname), &temp, code);
 	if (code)
 	    return code;
 	logp = afs_icl_FindLog(tname);
@@ -2201,30 +2325,30 @@ Afscall_icl(long opcode, long p1, long p2, long p3, long p4, long *retval)
 
     case ICL_OP_GETLOGINFO:	/* get size of log */
 	/* zero out the specified log: p1=logname, p2=&logSize, p3=&allocated */
-	AFS_COPYINSTR((char *)p1, tname, sizeof(tname), &temp, code);
+	AFS_COPYINSTR(AFSKPTR(p1), tname, sizeof(tname), &temp, code);
 	if (code)
 	    return code;
 	logp = afs_icl_FindLog(tname);
 	if (!logp)
 	    return ENOENT;
 	allocated = !!logp->datap;
-	AFS_COPYOUT((char *)&logp->logSize, (char *)p2, sizeof(afs_int32),
+	AFS_COPYOUT((char *)&logp->logSize, AFSKPTR(p2), sizeof(afs_int32),
 		    code);
 	if (!code)
-	    AFS_COPYOUT((char *)&allocated, (char *)p3, sizeof(afs_int32),
+	    AFS_COPYOUT((char *)&allocated, AFSKPTR(p3), sizeof(afs_int32),
 			code);
 	afs_icl_LogRele(logp);
 	break;
 
     case ICL_OP_GETSETINFO:	/* get state of set */
 	/* zero out the specified set: p1=setname, p2=&state */
-	AFS_COPYINSTR((char *)p1, tname, sizeof(tname), &temp, code);
+	AFS_COPYINSTR(AFSKPTR(p1), tname, sizeof(tname), &temp, code);
 	if (code)
 	    return code;
 	setp = afs_icl_FindSet(tname);
 	if (!setp)
 	    return ENOENT;
-	AFS_COPYOUT((char *)&setp->states, (char *)p2, sizeof(afs_int32),
+	AFS_COPYOUT((char *)&setp->states, AFSKPTR(p2), sizeof(afs_int32),
 		    code);
 	afs_icl_SetRele(setp);
 	break;
@@ -3109,7 +3233,7 @@ afs_icl_CreateSetWithFlags(char *name, struct afs_icl_log *baseLogp,
     if (flags & ICL_CRSET_FLAG_PERSISTENT)
 	states |= ICL_SETF_PERSISTENT;
 
-    setp = (struct afs_icl_set *)afs_osi_Alloc(sizeof(struct afs_icl_set));
+    setp = (struct afs_icl_set *)osi_AllocSmallSpace(sizeof(struct afs_icl_set));
     memset((caddr_t) setp, 0, sizeof(*setp));
     setp->refCount = 1;
     if (states & ICL_SETF_FREED)
@@ -3413,4 +3537,31 @@ afs_icl_SetSetStat(struct afs_icl_set *setp, int op)
     }
     ReleaseWriteLock(&setp->lock);
     return code;
+}
+
+/* Function called at shutdown - zap everything */
+void
+shutdown_icl(void)
+{
+    struct afs_icl_log *logp;
+    struct afs_icl_set *setp;
+
+    setp = afs_icl_FindSet("cm");
+    if (setp) {
+	/* Release the reference from Find, and the initial one */
+	afs_icl_SetFree(setp);
+	afs_icl_SetFree(setp);
+    }
+    setp = afs_icl_FindSet("cmlongterm");
+    if (setp) {
+	/* Release the reference from Find, and the initial one */
+	afs_icl_SetFree(setp);
+	afs_icl_SetFree(setp);
+    }
+    logp = afs_icl_FindLog("cmfx");
+    if (logp) {
+	/* Release the reference from Find, and the initial one */
+	afs_icl_LogFree(logp);
+	afs_icl_LogFree(logp);
+    }
 }

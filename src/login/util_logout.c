@@ -18,9 +18,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/login/Attic/util_logout.c,v 1.5 2003/07/15 23:15:44 shadow Exp $");
-
 #include <sys/types.h>
 #include <sys/file.h>
 #ifdef	AFS_SUN5_ENV

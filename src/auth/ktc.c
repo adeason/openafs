@@ -16,8 +16,6 @@
 #include <afs/param.h>
 #endif
 
-RCSID
-    ("$Header: /cvs/openafs/src/auth/ktc.c,v 1.15.2.14 2009/06/29 20:24:49 shadow Exp $");
 
 #if defined(UKERNEL)
 #include "afs/sysincludes.h"
@@ -60,6 +58,9 @@ RCSID
 #include <sys/pag.h>
 #endif
 #endif
+#endif
+#ifdef AFS_DARWIN100_ENV
+#include <crt_externs.h>
 #endif
 #ifdef HAVE_UNISTD_H
 #include <unistd.h>
@@ -920,6 +921,70 @@ ktc_OldPioctl(void)
     return rc;
 }
 
+afs_uint32
+ktc_curpag(void)
+{
+    int code;
+    struct ViceIoctl iob;
+    afs_int32 pag;
+
+    /* now setup for the pioctl */
+    iob.in = NULL;
+    iob.in_size = 0;
+    iob.out = &pag;
+    iob.out_size = sizeof(afs_int32);
+
+    code = PIOCTL(0, VIOC_GETPAG, &iob, 0);
+    if (code < 0) {
+#if defined(AFS_AIX52_ENV)
+	code = getpagvalue("afs");
+	if (code < 0 && errno == EINVAL)
+	    code = 0;
+	return code;
+#elif defined(AFS_AIX51_ENV)
+	return -1;
+#else
+	gid_t groups[NGROUPS_MAX];
+	afs_uint32 g0, g1;
+	afs_uint32 h, l, ret;
+	int ngroups;
+	int i;
+
+	ngroups = getgroups(sizeof groups / sizeof groups[0], groups);
+
+#ifdef AFS_LINUX26_ENV
+	/* check for AFS_LINUX26_ONEGROUP_ENV PAGs */
+	for (i = 0; i < ngroups; i++) {
+	    if (((groups[i] >> 24) & 0xff) == 'A') {
+		return groups[i];
+	    }
+	}
+#endif
+
+	if (ngroups < 2)
+	    return 0;
+
+	g0 = groups[0] & 0xffff;
+	g1 = groups[1] & 0xffff;
+	g0 -= 0x3f00;
+	g1 -= 0x3f00;
+	if (g0 < 0xc000 && g1 < 0xc000) {
+	    l = ((g0 & 0x3fff) << 14) | (g1 & 0x3fff);
+	    h = (g0 >> 14);
+	    h = (g1 >> 14) + h + h + h;
+	    ret = ((h << 28) | l);
+	    /* Additional testing */
+	    if (((ret >> 24) & 0xff) == 'A')
+		return ret;
+	    else
+		return -1;
+	}
+	return -1;
+#endif
+    }
+    return pag;
+}
+
 
 #ifdef AFS_KERBEROS_ENV
  /*
@@ -1613,61 +1678,14 @@ afs_tf_dest_tkt(void)
     return 0;
 }
 
-afs_uint32
-ktc_curpag(void)
-{
-    int code;
-    struct ViceIoctl iob;
-    afs_int32 pag;
-
-    /* now setup for the pioctl */
-    iob.in = NULL;
-    iob.in_size = 0;
-    iob.out = &pag;
-    iob.out_size = sizeof(afs_int32);
-
-    code = PIOCTL(0, VIOC_GETPAG, &iob, 0);
-    if (code < 0) {
-#if defined(AFS_AIX52_ENV)
-	code = getpagvalue("afs");
-	if (code < 0 && errno == EINVAL)
-	    code = 0;
-	return code;
-#elif defined(AFS_AIX51_ENV)
-	return -1;
-#else
-	gid_t groups[NGROUPS_MAX];
-	afs_uint32 g0, g1;
-	afs_uint32 h, l, ret;
-	
-	if (getgroups(sizeof groups / sizeof groups[0], groups) < 2)
-	    return 0;
-	
-	g0 = groups[0] & 0xffff;
-	g1 = groups[1] & 0xffff;
-	g0 -= 0x3f00;
-	g1 -= 0x3f00;
-	if (g0 < 0xc000 && g1 < 0xc000) {
-	    l = ((g0 & 0x3fff) << 14) | (g1 & 0x3fff);
-	    h = (g0 >> 14);
-	    h = (g1 >> 14) + h + h + h;
-	    ret = ((h << 28) | l);
-	    /* Additional testing */
-	    if (((ret >> 24) & 0xff) == 'A')
-		return ret;
-	    else
-		return -1;
-	}
-	return -1;
-#endif
-    }
-    return pag;
-}
-
 int
 ktc_newpag(void)
 {
-    extern char **environ;
+#ifdef AFS_DARWIN100_ENV
+#define environ (*_NSGetEnviron())
+#else
+extern char **environ;
+#endif
 
     afs_uint32 pag;
     struct stat sbuf;

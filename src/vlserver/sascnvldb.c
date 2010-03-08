@@ -10,8 +10,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/vlserver/sascnvldb.c,v 1.7.2.1 2007/10/31 04:13:51 shadow Exp $");
 
 #include <afs/stds.h>
 #include <sys/types.h>

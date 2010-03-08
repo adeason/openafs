@@ -10,8 +10,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/auth/cellconfig.c,v 1.40.2.21 2009/06/02 03:33:09 jaltman Exp $");
 
 #include <afs/stds.h>
 #include <afs/pthread_glock.h>

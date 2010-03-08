@@ -15,8 +15,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/util/regex.c,v 1.7 2003/12/07 22:49:40 jaltman Exp $");
 
 /*
  * routines to do regular expression matching

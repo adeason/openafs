@@ -33,8 +33,6 @@
 
 #include "rxgk_locl.h"
 
-RCSID("$Id: rxgk_clnt.c,v 1.1 2004/08/08 19:21:33 shadow Exp $");
-
 /* Security object specific client data */
 typedef struct rxgk_clnt_class {
     struct rx_securityClass klass;

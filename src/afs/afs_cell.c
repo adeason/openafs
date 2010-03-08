@@ -13,8 +13,6 @@
 #include <afsconfig.h>
 #include "afs/param.h"
 
-RCSID
-    ("$Header: /cvs/openafs/src/afs/afs_cell.c,v 1.30.2.6 2007/12/04 20:33:17 shadow Exp $");
 
 #include "afs/stds.h"
 #include "afs/sysincludes.h"	/* Standard vendor system headers */
@@ -57,6 +55,7 @@ afs_StopAFSDB()
     } else {
 	afsdb_handler_shutdown = 1;
 	afs_termState = AFSOP_STOP_RXEVENT;
+	afs_osi_Wakeup(&afs_termState);
     }
 }
 

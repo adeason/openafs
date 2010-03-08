@@ -10,8 +10,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/volser/common.c,v 1.10.2.1 2007/04/10 18:43:47 shadow Exp $");
 
 #include <stdio.h>
 #include <afs/afsutil.h>

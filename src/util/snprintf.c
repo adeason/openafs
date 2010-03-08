@@ -3,8 +3,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/util/snprintf.c,v 1.21.2.5 2007/12/14 13:09:26 jaltman Exp $");
 
 #include <sys/types.h>
 #include <stdarg.h>

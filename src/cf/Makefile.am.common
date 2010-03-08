@@ -1,4 +1,4 @@
-# $Id: Makefile.am.common,v 1.2 2001/10/17 23:07:03 shadow Exp $
+# $Id$
 
 AUTOMAKE_OPTIONS = foreign no-dependencies
 

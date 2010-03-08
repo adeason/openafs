@@ -14,10 +14,6 @@
 #include <afsconfig.h>
 #include "afs/param.h"
 
-RCSID
-    ("$Header: /cvs/openafs/src/afs/DUX/Attic/osi_vnodeops.c,v 1.11.2.1 2005/01/31 03:49:11 shadow Exp $");
-
-
 #include "afs/sysincludes.h"	/* Standard vendor system headers */
 #include "afsincludes.h"	/* Afs-based standard headers */
 #include "afs/afs_stats.h"	/* statistics */

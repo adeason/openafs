@@ -10,8 +10,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/kauth/kdb.c,v 1.7.2.3 2007/11/26 21:21:52 shadow Exp $");
 
 #include <fcntl.h>
 #include <sys/types.h>

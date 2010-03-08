@@ -21,8 +21,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/rx/rx_lwp.c,v 1.17.2.3 2008/03/10 22:35:36 shadow Exp $");
 
 # include <sys/types.h>		/* fd_set on older platforms */
 # include <errno.h>
@@ -465,6 +463,13 @@ rxi_Sendmsg(osi_socket socket, struct msghdr *msg_p, int flags)
 	{
 	    (osi_Msg "rx failed to send packet: ");
 	    perror("rx_sendmsg");
+#ifndef AFS_NT40_ENV
+            if (errno > 0)
+              return -errno;
+#else
+            if (WSAGetLastError() > 0)
+              return -WSAGetLastError();
+#endif
 	    return -1;
 	}
 	while ((err = select(socket + 1, 0, sfds, 0, 0)) != 1) {

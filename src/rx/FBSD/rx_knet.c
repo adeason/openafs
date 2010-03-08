@@ -10,8 +10,6 @@
 #include <afsconfig.h>
 #include "afs/param.h"
 
-RCSID
-    ("$Header: /cvs/openafs/src/rx/FBSD/rx_knet.c,v 1.14.2.2 2008/08/26 14:02:25 shadow Exp $");
 
 #ifdef AFS_FBSD40_ENV
 #include <sys/malloc.h>

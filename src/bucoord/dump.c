@@ -14,8 +14,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/bucoord/dump.c,v 1.12.2.6 2008/04/09 16:40:16 shadow Exp $");
 
 #include <sys/types.h>
 #include <afs/cmd.h>

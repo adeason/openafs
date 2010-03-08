@@ -10,8 +10,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/venus/livesys.c,v 1.4.2.4 2008/11/30 20:25:03 shadow Exp $");
 
 #include <afs/afs_args.h>
 #include <rx/xdr.h>

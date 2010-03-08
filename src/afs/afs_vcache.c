@@ -38,8 +38,6 @@
 #include <afsconfig.h>
 #include "afs/param.h"
 
-RCSID
-    ("$Header: /cvs/openafs/src/afs/afs_vcache.c,v 1.65.2.56 2009/06/24 21:30:14 shadow Exp $");
 
 #include "afs/sysincludes.h"	/*Standard vendor system headers */
 #include "afsincludes.h"	/*AFS-based standard headers */
@@ -210,14 +208,7 @@ afs_FlushVCache(struct vcache *avc, int *slept)
     vn_reinit(AFSTOV(avc));
 #endif
     afs_FreeAllAxs(&(avc->Access));
-
-    /* we can't really give back callbacks on RO files, since the
-     * server only tracks them on a per-volume basis, and we don't
-     * know whether we still have some other files from the same
-     * volume. */
-    if ((avc->states & CRO) == 0 && avc->callback) {
-	afs_QueueVCB(avc);
-    }
+    afs_QueueVCB(avc);
     ObtainWriteLock(&afs_xcbhash, 460);
     afs_DequeueCallback(avc);	/* remove it from queued callbacks list */
     avc->states &= ~(CStatd | CUnique);
@@ -507,22 +498,36 @@ afs_FlushVCBs(afs_int32 lockit)
  * Environment:
  *	Locks the xvcb lock.
  *	Called when the xvcache lock is already held.
+ *
+ * \param avc vcache entry
+ * \return 1 if queued, 0 otherwise
  */
 
 static afs_int32
 afs_QueueVCB(struct vcache *avc)
 {
+    int queued = 0;
     struct server *tsp;
     struct afs_cbr *tcbp;
 
     AFS_STATCNT(afs_QueueVCB);
+
+    MObtainWriteLock(&afs_xvcb, 274);
+
+    /* we can't really give back callbacks on RO files, since the
+     * server only tracks them on a per-volume basis, and we don't
+     * know whether we still have some other files from the same
+     * volume. */
+    if (!((avc->states & CRO) == 0 && avc->callback)) {
+        goto done;
+    }
+
     /* The callback is really just a struct server ptr. */
     tsp = (struct server *)(avc->callback);
 
     /* we now have a pointer to the server, so we just allocate
      * a queue entry and queue it.
      */
-    MObtainWriteLock(&afs_xvcb, 274);
     tcbp = afs_AllocCBR();
     tcbp->fid = avc->fid.Fid;
 
@@ -534,10 +539,12 @@ afs_QueueVCB(struct vcache *avc)
     tcbp->pprev = &tsp->cbrs;
 
     afs_InsertHashCBR(tcbp);
+    queued = 1;
 
+ done:
     /* now release locks and return */
     MReleaseWriteLock(&afs_xvcb);
-    return 0;
+    return queued;
 }
 
 
@@ -635,13 +642,6 @@ afs_ShakeLooseVCaches(afs_int32 anumber)
     struct afs_q *tq, *uq;
     int code, fv_slept;
     afs_int32 target = anumber;
-    int haveGlock = 1;
-
-    /* Should probably deal better */
-    if (!ISAFS_GLOCK()) {
-	haveGlock = 0;
-	AFS_GLOCK();
-    }
 
     if (
 #ifdef AFS_MAXVCOUNT_ENV
@@ -740,8 +740,6 @@ restart:
 /*
     printf("recycled %d entries\n", target-anumber);
 */
-    if (!haveGlock)
-	AFS_GUNLOCK();
 #endif
     return 0;
 }
@@ -1228,7 +1226,7 @@ afs_FlushActiveVcaches(register afs_int32 doflocks)
     register int i;
     register struct afs_conn *tc;
     register afs_int32 code;
-    register struct AFS_UCRED *cred = NULL;
+    struct AFS_UCRED *cred = NULL;
     struct vrequest treq, ureq;
     struct AFSVolSync tsync;
     int didCore;

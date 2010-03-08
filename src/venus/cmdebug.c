@@ -10,8 +10,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/venus/cmdebug.c,v 1.15.2.12 2008/10/10 11:54:45 jaltman Exp $");
 
 
 #include <sys/types.h>

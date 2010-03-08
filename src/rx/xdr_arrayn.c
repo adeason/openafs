@@ -30,8 +30,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/rx/xdr_arrayn.c,v 1.8.2.3 2009/03/27 15:55:46 shadow Exp $");
 
 #if defined(AFS_OBSD44_ENV) && defined(KERNEL) && !defined(UKERNEL)
 /* XXX osi_alloc, please find and fix */

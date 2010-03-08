@@ -35,8 +35,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/rxgen/rpc_hout.c,v 1.7.2.4 2008/02/05 18:53:22 shadow Exp $");
 
 #include <stdio.h>
 #include <string.h>

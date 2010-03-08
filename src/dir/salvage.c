@@ -12,8 +12,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/dir/salvage.c,v 1.10.2.1 2007/10/30 15:23:52 shadow Exp $");
 
 #include <sys/types.h>
 #include <errno.h>

@@ -33,8 +33,6 @@
 
 #include "rxgk_locl.h"
 
-RCSID("$Id: rxgk_crlha.c,v 1.1 2004/08/08 19:21:33 shadow Exp $");
-
 #include <openssl/md5.h>
 #include <openssl/des.h>
 

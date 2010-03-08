@@ -13,8 +13,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/export/cfgexport.c,v 1.11.2.2 2008/09/03 18:27:40 shadow Exp $");
 
 #include <errno.h>
 #include <stdio.h>

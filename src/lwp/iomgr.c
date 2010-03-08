@@ -36,7 +36,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID("$Header: /cvs/openafs/src/lwp/iomgr.c,v 1.13.2.2 2008/03/10 22:35:35 shadow Exp $");
 
 #include <stdio.h>
 #include <stdlib.h>

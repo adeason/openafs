@@ -15,8 +15,6 @@
 #include <afsconfig.h>
 #include "afs/param.h"
 
-RCSID
-    ("$Header: /cvs/openafs/src/afs/VNOPS/afs_vnop_flock.c,v 1.24.2.12 2009/06/24 21:30:19 shadow Exp $");
 
 #include "afs/sysincludes.h"	/* Standard vendor system headers */
 #include "afsincludes.h"	/* Afs-based standard headers */
@@ -469,8 +467,13 @@ DoLockWarning(void)
 
     /* otherwise, it is time to nag the user */
     lastWarnTime = now;
+#ifdef AFS_LINUX26_ENV
+    afs_warn
+	("afs: byte-range locks only enforced for processes on this machine.\n");
+#else
     afs_warn
 	("afs: byte-range lock/unlock ignored; make sure no one else is running this program.\n");
+#endif
 }
 
 

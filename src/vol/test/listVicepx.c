@@ -17,8 +17,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/vol/test/listVicepx.c,v 1.6 2003/07/15 23:17:43 shadow Exp $");
 
 #include <rx/xdr.h>
 #include <afs/afsint.h>

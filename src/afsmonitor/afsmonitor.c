@@ -18,8 +18,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/afsmonitor/afsmonitor.c,v 1.18.2.4 2007/10/31 04:13:32 shadow Exp $");
 
 #include <stdio.h>
 #include <math.h>

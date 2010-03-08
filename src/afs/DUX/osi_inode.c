@@ -16,9 +16,6 @@
 #include <afsconfig.h>
 #include "afs/param.h"
 
-RCSID
-    ("$Header: /cvs/openafs/src/afs/DUX/Attic/osi_inode.c,v 1.13 2004/07/29 03:13:44 shadow Exp $");
-
 #include "afs/sysincludes.h"	/* Standard vendor system headers */
 #include "afsincludes.h"	/* Afs-based standard headers */
 #include "afs/osi_inode.h"

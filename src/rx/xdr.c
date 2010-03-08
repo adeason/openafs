@@ -35,8 +35,6 @@
 #include <string.h>
 #endif
 
-RCSID
-    ("$Header: /cvs/openafs/src/rx/xdr.c,v 1.9.2.3 2007/10/30 15:24:04 shadow Exp $");
 
 /*
  * xdr.c, Generic XDR routines implementation.

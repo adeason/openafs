@@ -15,8 +15,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/afsmonitor/afsmon-win.c,v 1.10.2.2 2007/11/26 21:21:48 shadow Exp $");
 
 #include <stdio.h>
 #include <signal.h>

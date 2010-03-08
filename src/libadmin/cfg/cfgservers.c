@@ -18,8 +18,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/libadmin/cfg/cfgservers.c,v 1.6 2004/04/02 06:54:05 jaltman Exp $");
 
 #include <afs/stds.h>
 

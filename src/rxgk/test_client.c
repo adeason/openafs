@@ -18,8 +18,6 @@
 #include "rxgk_proto.cs.h"
 #include "test.cs.h"
 
-RCSID("$Id: test_client.c,v 1.1 2004/08/08 19:21:33 shadow Exp $");
-
 /*
  *
  */

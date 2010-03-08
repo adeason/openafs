@@ -10,8 +10,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/auth/setkey.c,v 1.8.2.2 2007/11/01 16:09:43 shadow Exp $");
 
 #include <sys/types.h>
 #include <stdio.h>

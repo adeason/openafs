@@ -14,8 +14,6 @@
 #include <afs/param.h>
 #endif
 
-RCSID
-    ("$Header: /cvs/openafs/src/auth/authcon.c,v 1.13.2.3 2007/11/01 16:09:43 shadow Exp $");
 
 #if defined(UKERNEL)
 #include "afs/sysincludes.h"

@@ -19,8 +19,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/vol/common.c,v 1.6 2003/07/15 23:17:37 shadow Exp $");
 
 #include <afs/afsutil.h>
 

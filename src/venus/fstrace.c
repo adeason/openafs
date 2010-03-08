@@ -13,8 +13,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/venus/fstrace.c,v 1.16.2.8 2007/11/26 21:21:56 shadow Exp $");
 
 #include <stdio.h>
 #include <sys/types.h>

@@ -18,8 +18,6 @@
 #include <security/pam_appl.h>
 #include <security/pam_modules.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/pam/afs_password.c,v 1.10.2.2 2009/04/27 18:33:04 shadow Exp $");
 
 #include <sys/param.h>
 #include <afs/kautils.h>
@@ -121,8 +119,8 @@ pam_sm_chauthtok(pam_handle_t * pamh, int flags, int argc, const char **argv)
      * and its uid==0, and "ignore_root" was given in pam.conf,
      * ignore the user.
      */
-#if	defined(AFS_HPUX_ENV)
-#if     defined(AFS_HPUX110_ENV)
+#if	defined(AFS_HPUX_ENV) || defined(AFS_DARWIN100_ENV)
+#if     defined(AFS_HPUX110_ENV) || defined(AFS_DARWIN100_ENV)
     i = getpwnam_r(user, &unix_pwd, upwd_buf, sizeof(upwd_buf), &upwd);
 #else /* AFS_HPUX110_ENV */
     i = getpwnam_r(user, &unix_pwd, upwd_buf, sizeof(upwd_buf));

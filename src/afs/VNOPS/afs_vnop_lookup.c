@@ -17,8 +17,6 @@
 #include <afsconfig.h>
 #include "afs/param.h"
 
-RCSID
-    ("$Header: /cvs/openafs/src/afs/VNOPS/afs_vnop_lookup.c,v 1.50.2.25 2009/06/24 21:30:19 shadow Exp $");
 
 #include "afs/sysincludes.h"	/* Standard vendor system headers */
 #include "afsincludes.h"	/* Afs-based standard headers */
@@ -1153,6 +1151,10 @@ afs_lookup(OSI_VC_DECL(adp), char *aname, struct vcache **avcp, struct AFS_UCRED
 	if (strcmp(aname, "Contents") == 0)
 	    tryEvalOnly = 1;
     }
+    if (afs_fakestat_enable && adp->mvstat == 2) {
+	if (strncmp(aname, "._", 2) == 0)
+	    tryEvalOnly = 1;
+    }
 #endif
 
     if (tryEvalOnly)
@@ -1364,7 +1366,7 @@ afs_lookup(OSI_VC_DECL(adp), char *aname, struct vcache **avcp, struct AFS_UCRED
 	ReleaseReadLock(&tdc->lock);
 	afs_PutDCache(tdc);
 
-	if (code == ENOENT && afs_IsDynroot(adp) && dynrootRetry) {
+	if (code == ENOENT && afs_IsDynroot(adp) && dynrootRetry && !tryEvalOnly) {
 	    ReleaseReadLock(&adp->lock);
 	    dynrootRetry = 0;
 	    if (tname[0] == '.')
@@ -1387,7 +1389,7 @@ afs_lookup(OSI_VC_DECL(adp), char *aname, struct vcache **avcp, struct AFS_UCRED
 
 	if (code) {
 	    if (code != ENOENT) {
-		printf("LOOKUP dirLookupOff -> %d\n", code);
+		/*printf("LOOKUP dirLookupOff -> %d\n", code);*/
 	    }
 	    goto done;
 	}

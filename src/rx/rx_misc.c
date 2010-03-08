@@ -10,8 +10,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/rx/rx_misc.c,v 1.12.2.3 2008/01/31 00:27:40 jaltman Exp $");
 
 #ifdef	KERNEL
 #include <afs/sysincludes.h>

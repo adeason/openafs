@@ -17,8 +17,6 @@
 #include "rxgk_proto.ss.h"
 #include "test.ss.h"
 
-RCSID("$Id: test_server.c,v 1.1 2004/08/08 19:21:33 shadow Exp $");
-
 /*
  *
  */

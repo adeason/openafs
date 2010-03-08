@@ -18,8 +18,6 @@
 #include <afs/param.h>
 #endif
 
-RCSID
-    ("$Header: /cvs/openafs/src/rxkad/domestic/crypt_conn.c,v 1.11.2.6 2008/01/04 18:08:24 rees Exp $");
 
 #ifdef KERNEL
 #include "afs/stds.h"

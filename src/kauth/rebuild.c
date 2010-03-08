@@ -10,8 +10,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/kauth/rebuild.c,v 1.11.2.5 2007/11/26 21:21:52 shadow Exp $");
 
 #include <sys/types.h>
 #include <sys/stat.h>

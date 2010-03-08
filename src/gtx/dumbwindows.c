@@ -16,8 +16,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/gtx/dumbwindows.c,v 1.7 2003/07/15 23:15:12 shadow Exp $");
 
 #include "gtxdumbwin.h"		/*Interface definition */
 #include <stdio.h>		/*Standard I/O package */

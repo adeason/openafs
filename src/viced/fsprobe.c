@@ -10,8 +10,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/viced/fsprobe.c,v 1.11.2.2 2007/11/26 21:21:57 shadow Exp $");
 
 #include <afs/stds.h>
 #include <afs/afsint.h>

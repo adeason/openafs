@@ -13,8 +13,6 @@
 #include <afsconfig.h>
 #include "afs/param.h"
 
-RCSID
-    ("$Header: /cvs/openafs/src/afs/afs_dcache.c,v 1.42.2.25 2009/06/24 21:30:14 shadow Exp $");
 
 #include "afs/sysincludes.h"	/*Standard vendor system headers */
 #include "afsincludes.h"	/*AFS-based standard headers */
@@ -2210,6 +2208,20 @@ afs_GetDCache(register struct vcache *avc, afs_size_t abyte,
 			}
 		    }
 #endif /* AFS_64BIT_CLIENT */
+
+		    if (code == 0 && length > size) {
+			/* The fileserver told us it is going to send more data
+			 * than we requested. It shouldn't do that, and
+			 * accepting that much data can make us take up more
+			 * cache space than we're supposed to, so error. */
+			code = rx_Error(tcall);
+			RX_AFS_GUNLOCK();
+			code1 = rx_EndCall(tcall, code);
+			RX_AFS_GLOCK();
+			tcall = (struct rx_call *)0;
+			code = EIO;
+		    }
+
 		    if (code == 0) {
 
 #ifndef AFS_NOSTATS

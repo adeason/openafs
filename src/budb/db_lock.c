@@ -10,8 +10,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/budb/db_lock.c,v 1.6 2003/07/15 23:14:48 shadow Exp $");
 
 #include <sys/types.h>
 #ifdef AFS_NT40_ENV

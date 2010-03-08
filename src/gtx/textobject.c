@@ -15,8 +15,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/gtx/textobject.c,v 1.6.2.2 2007/11/26 21:21:52 shadow Exp $");
 
 #include "gtxtextobj.h"		/*Interface for this module */
 #include "gtxwindows.h"		/*Gator window interface */

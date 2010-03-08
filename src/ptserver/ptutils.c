@@ -23,8 +23,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/ptserver/ptutils.c,v 1.18.2.6 2008/10/26 07:51:37 jaltman Exp $");
 
 #include <afs/stds.h>
 #include <sys/types.h>

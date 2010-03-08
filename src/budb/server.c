@@ -10,8 +10,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/budb/server.c,v 1.14.2.11 2008/12/22 19:23:31 shadow Exp $");
 
 #include <fcntl.h>
 #include <sys/stat.h>

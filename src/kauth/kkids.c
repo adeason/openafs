@@ -15,8 +15,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/kauth/kkids.c,v 1.6.2.1 2007/11/26 21:21:52 shadow Exp $");
 
 #include <stdio.h>
 #include <sys/types.h>

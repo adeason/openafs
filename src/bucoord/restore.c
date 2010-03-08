@@ -14,8 +14,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/bucoord/restore.c,v 1.8.2.10 2008/10/18 15:23:37 jaltman Exp $");
 
 #include <afs/stds.h>
 #include <sys/types.h>
@@ -58,7 +56,7 @@ struct dumpinfo {
 };
 
 struct volinfo {
-    struct voli *next;
+    struct volinfo *next;
     char *volname;
     afs_int32 server;
     afs_int32 partition;

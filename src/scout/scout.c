@@ -14,8 +14,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/scout/scout.c,v 1.9.2.4 2007/11/26 21:21:55 shadow Exp $");
 
 #undef	IN
 #ifdef	AFS_AIX32_ENV

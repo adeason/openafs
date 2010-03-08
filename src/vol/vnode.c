@@ -16,8 +16,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/vol/vnode.c,v 1.19.2.8 2009/05/22 16:00:46 shadow Exp $");
 
 #include <errno.h>
 #include <stdio.h>

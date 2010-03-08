@@ -17,8 +17,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/volser/vol-dump.c,v 1.1.2.4 2009/03/23 18:19:57 shadow Exp $");
 
 #include <ctype.h>
 #include <errno.h>

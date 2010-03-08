@@ -50,8 +50,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/ptserver/ptprocs.c,v 1.21.2.12 2009/06/03 21:49:17 shadow Exp $");
 
 #include <afs/stds.h>
 #include <ctype.h>

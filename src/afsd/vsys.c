@@ -17,8 +17,6 @@
 #include <unistd.h>
 #endif
 
-RCSID
-    ("$Header: /cvs/openafs/src/afsd/vsys.c,v 1.6.2.1 2007/10/30 15:23:45 shadow Exp $");
 
 #include <afs/afs_args.h>
 

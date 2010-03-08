@@ -14,8 +14,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/libadmin/test/client.c,v 1.8.2.1 2007/10/31 04:13:42 shadow Exp $");
 
 #include "client.h"
 #include <afs/cellconfig.h>

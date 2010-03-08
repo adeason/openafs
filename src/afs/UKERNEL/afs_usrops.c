@@ -15,8 +15,6 @@
 #include <afsconfig.h>
 #include "afs/param.h"
 
-RCSID
-    ("$Header: /cvs/openafs/src/afs/UKERNEL/afs_usrops.c,v 1.27.2.11 2009/04/27 18:33:01 shadow Exp $");
 
 
 #ifdef	UKERNEL

@@ -10,8 +10,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/ptserver/ptclient.c,v 1.12.2.4 2007/08/11 23:50:02 jaltman Exp $");
 
 #ifdef	AFS_AIX32_ENV
 #include <signal.h>

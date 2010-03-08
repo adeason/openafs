@@ -18,8 +18,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/uss/uss.c,v 1.8.2.3 2007/11/26 21:21:56 shadow Exp $");
 
 #ifdef	AFS_AIX32_ENV
 #include <signal.h>

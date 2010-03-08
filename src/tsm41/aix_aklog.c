@@ -11,9 +11,6 @@
 #include <afs/param.h>
 #include <afs/com_err.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/tsm41/aix_aklog.c,v 1.1.4.8 2009/03/20 22:45:38 shadow Exp $");
-
 #if defined(AFS_AIX51_ENV)
 #include <sys/types.h>
 #include <sys/param.h>

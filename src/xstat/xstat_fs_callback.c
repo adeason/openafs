@@ -29,8 +29,6 @@
 #include <rpc.h>
 #endif
 
-RCSID
-    ("$Header: /cvs/openafs/src/xstat/xstat_fs_callback.c,v 1.13.2.2 2007/10/30 15:24:16 shadow Exp $");
 
 #include <errno.h>
 #include <stdio.h>		/*Standard I/O stuff */

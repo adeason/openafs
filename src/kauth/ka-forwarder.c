@@ -8,7 +8,7 @@
 
 /*
  * HISTORY
- * $Log: ka-forwarder.c,v $
+ * $Log$
  * Revision 1.2.4.2  2007/08/19 22:17:44  rra
  * DELTA STABLE14-ka-forwarder-20060731
  * AUTHOR rra@stanford.edu

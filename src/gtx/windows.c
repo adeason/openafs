@@ -18,8 +18,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/gtx/windows.c,v 1.6.2.1 2009/03/17 02:39:43 shadow Exp $");
 
 /* On DUX "IN" is a variable in curses.h, so this can be a bit of a problem */
 #ifdef IN

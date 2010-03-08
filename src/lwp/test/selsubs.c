@@ -28,8 +28,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/lwp/test/selsubs.c,v 1.8.2.1 2006/03/20 13:41:32 jaltman Exp $");
 
 
 #include "lwp.h"

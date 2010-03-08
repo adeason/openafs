@@ -18,8 +18,6 @@
 #include <afs/param.h>
 #endif
 
-RCSID
-    ("$Header: /cvs/openafs/src/rx/xdr_rx.c,v 1.10.2.5 2009/06/03 20:36:35 shadow Exp $");
 
 #ifdef KERNEL
 #include "afs/sysincludes.h"

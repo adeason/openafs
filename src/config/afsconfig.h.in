@@ -209,6 +209,9 @@
 /* Define to 1 if you have the `krb5_524_convert_creds' function. */
 #undef HAVE_KRB5_524_CONVERT_CREDS
 
+/* Define to 1 if you have the `krb5_allow_weak_crypto' function. */
+#undef HAVE_KRB5_ALLOW_WEAK_CRYPTO
+
 /* define if krb5_cc_register exists */
 #undef HAVE_KRB5_CC_REGISTER
 
@@ -226,6 +229,9 @@
 
 /* Define to 1 if you have the `krb5_decode_ticket' function. */
 #undef HAVE_KRB5_DECODE_TICKET
+
+/* Define to 1 if you have the `krb5_enctype_enable' function. */
+#undef HAVE_KRB5_ENCTYPE_ENABLE
 
 /* Define to 1 if you have the `krb5_get_prompt_types' function. */
 #undef HAVE_KRB5_GET_PROMPT_TYPES
@@ -478,14 +484,15 @@
 /* define if key-type.h exists */
 #undef KEY_TYPE_H_EXISTS
 
+/* define if kmem_cache_create constructor function takes a single void
+   pointer argument */
+#undef KMEM_CACHE_CTOR_TAKES_VOID
+
 /* define for new kmem_cache init function parameters */
 #undef KMEM_CACHE_INIT
 
 /* define if kmem_cache_create takes a destructor argument */
 #undef KMEM_CACHE_TAKES_DTOR
-
-/* define if your linux kernel uses SELinux features */
-#undef LINUX_KERNEL_IS_SELINUX
 
 /* define if your linux kernel uses 5 arguments for sock_create */
 #undef LINUX_KERNEL_SOCK_CREATE_V
@@ -499,32 +506,6 @@
 /* define if linux/semaphore.h exists */
 #undef LINUX_SEMAPHORE_H
 
-/* Name of package */
-#undef PACKAGE
-
-/* Define to the address where bug reports for this package should be sent. */
-#undef PACKAGE_BUGREPORT
-
-/* Define to the full name of this package. */
-#undef PACKAGE_NAME
-
-/* Define to the full name and version of this package. */
-#undef PACKAGE_STRING
-
-/* Define to the one symbol short name of this package. */
-#undef PACKAGE_TARNAME
-
-/* Define to the version of this package. */
-#undef PACKAGE_VERSION
-
-/* define if your linux kernel uses 3 arguments for posix_lock_file */
-#undef POSIX_LOCK_FILE_WAIT_ARG
-
-/* Define to 1 if the C compiler supports function prototypes. */
-#undef PROTOTYPES
-
-#define RCSID(msg) \
-static /**/const char *const rcsid[] = { (char *)rcsid, "\100(#)" msg }
 #undef HAVE_CONNECT
 #undef HAVE_GETHOSTBYNAME
 #undef HAVE_RES_SEARCH
@@ -610,6 +591,36 @@ static /**/const char *const rcsid[] = { (char *)rcsid, "\100(#)" msg }
 #include "redhat-fix.h"
 #endif
 
+/* Name of package */
+#undef PACKAGE
+
+/* Define to the address where bug reports for this package should be sent. */
+#undef PACKAGE_BUGREPORT
+
+/* Define to the full name of this package. */
+#undef PACKAGE_NAME
+
+/* Define to the full name and version of this package. */
+#undef PACKAGE_STRING
+
+/* Define to the one symbol short name of this package. */
+#undef PACKAGE_TARNAME
+
+/* Define to the version of this package. */
+#undef PACKAGE_VERSION
+
+/* define if your linux kernel uses 3 arguments for posix_lock_file */
+#undef POSIX_LOCK_FILE_WAIT_ARG
+
+/* define if posix_test_lock takes a conflict argument */
+#undef POSIX_TEST_LOCK_CONFLICT_ARG
+
+/* define if posix_test_lock returns the conflicting lock */
+#undef POSIX_TEST_LOCK_RETURNS_CONFLICT
+
+/* Define to 1 if the C compiler supports function prototypes. */
+#undef PROTOTYPES
+
 /* define if your recalc_sigpending takes void */
 #undef RECALC_SIGPENDING_TAKES_VOID
 
@@ -630,6 +641,18 @@ static /**/const char *const rcsid[] = { (char *)rcsid, "\100(#)" msg }
 /* define if time_t is defined */
 #undef SIZEOF_TIME_T
 
+/* The size of `unsigned int', as computed by sizeof. */
+#undef SIZEOF_UNSIGNED_INT
+
+/* The size of `unsigned long', as computed by sizeof. */
+#undef SIZEOF_UNSIGNED_LONG
+
+/* The size of `unsigned long long', as computed by sizeof. */
+#undef SIZEOF_UNSIGNED_LONG_LONG
+
+/* The size of `void *', as computed by sizeof. */
+#undef SIZEOF_VOID_P
+
 /* define if solookup takes a sockparams** */
 #undef SOLOOKUP_TAKES_SOCKPARAMS
 
@@ -644,6 +667,9 @@ static /**/const char *const rcsid[] = { (char *)rcsid, "\100(#)" msg }
 
 /* define if your struct address_space has page_lock */
 #undef STRUCT_ADDRESS_SPACE_HAS_PAGE_LOCK
+
+/* define if struct ctl_table has a ctl_name member */
+#undef STRUCT_CTL_TABLE_HAS_CTL_NAME
 
 /* define if your struct file_operations has flock */
 #undef STRUCT_FILE_OPERATIONS_HAS_FLOCK
@@ -698,6 +724,9 @@ static /**/const char *const rcsid[] = { (char *)rcsid, "\100(#)" msg }
 
 /* define if you struct sockaddr sa_len */
 #undef STRUCT_SOCKADDR_HAS_SA_LEN
+
+/* define if struct super_block has an s_bdi member */
+#undef STRUCT_SUPER_BLOCK_HAS_S_BDI
 
 /* define if your struct super_operations has alloc_inode */
 #undef STRUCT_SUPER_HAS_ALLOC_INODE

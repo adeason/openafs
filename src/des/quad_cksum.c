@@ -66,8 +66,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/des/quad_cksum.c,v 1.7 2003/11/29 22:08:12 jaltman Exp $");
 
 #include <mit-cpyright.h>
 

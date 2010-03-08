@@ -1,5 +1,5 @@
 /*
- * $Locker:  $
+ * $Locker$
  *
  * Copyright 1987 by the Student Information Processing Board
  * of the Massachusetts Institute of Technology
@@ -10,8 +10,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/comerr/error_msg.c,v 1.5.2.2 2007/04/10 18:43:42 shadow Exp $");
 
 #include "internal.h"
 #include <stdio.h>

@@ -21,8 +21,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/afsmonitor/afsmon-parselog.c,v 1.5 2003/07/15 23:14:32 shadow Exp $");
 
 #include <afs/xstat_fs.h>
 #include <afs/xstat_cm.h>

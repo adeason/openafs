@@ -31,8 +31,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/ptserver/map.c,v 1.3.2.3 2008/08/26 14:02:26 shadow Exp $");
 
 #ifdef SUPERGROUPS
 #include <errno.h>

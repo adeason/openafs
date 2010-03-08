@@ -12,8 +12,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/lwp/process.c,v 1.21.2.8 2008/03/13 13:42:31 shadow Exp $");
 
 #include <stdio.h>
 #include <assert.h>

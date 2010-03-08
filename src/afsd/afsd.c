@@ -61,8 +61,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/afsd/afsd.c,v 1.43.2.28 2009/05/30 17:56:41 shadow Exp $");
 
 #define VFS 1
 
@@ -164,12 +162,13 @@ void set_staticaddrs(void);
 #include <sys/ioctl.h>
 #endif
 #include <mach/mach.h>
+#ifndef AFS_DARWIN100_ENV
 /* Symbols from the DiskArbitration framework */
 kern_return_t DiskArbStart(mach_port_t *);
 kern_return_t DiskArbDiskAppearedWithMountpointPing_auto(char *, unsigned int,
 							 char *);
 #define DISK_ARB_NETWORK_DISK_FLAG 8
-
+#endif
 #include <mach/mach_port.h>
 #include <mach/mach_interface.h>
 #include <mach/mach_init.h>
@@ -612,7 +611,8 @@ int ParseCacheInfoFile(void)
  */
 int PartSizeOverflow(char *path, int cs)
 {
-    int bsize = -1, totalblks, mint;
+  int bsize = -1;
+  afs_int64 totalblks, mint;
 #if AFS_HAVE_STATVFS
     struct statvfs statbuf;
 
@@ -647,7 +647,7 @@ int PartSizeOverflow(char *path, int cs)
     bsize = statbuf.f_bsize;
 #endif
     if (bsize == -1)
-	return 0;		/* sucess */
+	return 0;		/* success */
 
     /* now free and totalblks are in fragment units, but we want them in 1K units */
     if (bsize >= 1024) {
@@ -2566,6 +2566,7 @@ HandleMTab()
 #endif /* AFS_SUN5_ENV */
 #endif /* unreasonable systems */
 #ifdef AFS_DARWIN_ENV
+#ifndef AFS_DARWIN100_ENV
     mach_port_t diskarb_port;
     kern_return_t status;
 
@@ -2578,14 +2579,15 @@ HandleMTab()
     }
 
     return status;
+#endif
 #endif /* AFS_DARWIN_ENV */
     return 0;
 }
 
 #if !defined(AFS_SGI_ENV) && !defined(AFS_AIX32_ENV)
-
-call_syscall(param1, param2, param3, param4, param5, param6, param7)
-     long param1, param2, param3, param4, param5, param6, param7;
+int
+call_syscall(long param1, long param2, long param3, long param4, long param5, 
+	     long param6, long param7)
 {
     int error;
 #ifdef AFS_LINUX20_ENV
@@ -2614,22 +2616,50 @@ call_syscall(param1, param2, param3, param4, param5, param6, param7)
 #endif
 #ifdef AFS_DARWIN80_ENV
     struct afssysargs syscall_data;
+    void *ioctldata;
     int fd = open(SYSCALL_DEV_FNAME,O_RDWR);
-    syscall_data.syscall = AFSCALL_CALL;
-    syscall_data.param1 = param1;
-    syscall_data.param2 = param2;
-    syscall_data.param3 = param3;
-    syscall_data.param4 = param4;
-    syscall_data.param5 = param5;
-    syscall_data.param6 = param6;
-    if(fd >= 0) {
-       error = ioctl(fd, VIOC_SYSCALL, &syscall_data);
-       close(fd);
+    int syscallnum, is64 = 0;
+#ifdef AFS_DARWIN100_ENV
+    struct afssysargs64 syscall64_data;
+    if (sizeof(param1) == 8) {
+	syscallnum = VIOC_SYSCALL64;
+	is64 = 1;
+	ioctldata = &syscall64_data;
+	syscall64_data.syscall = (int)AFSCALL_CALL;
+	syscall64_data.param1 = param1;
+	syscall64_data.param2 = param2;
+	syscall64_data.param3 = param3;
+	syscall64_data.param4 = param4;
+	syscall64_data.param5 = param5;
+	syscall64_data.param6 = param6;
     } else {
-       error = -1;
+#endif
+	syscallnum = VIOC_SYSCALL;
+	ioctldata = &syscall_data;
+	syscall_data.syscall = AFSCALL_CALL;
+	syscall_data.param1 = param1;
+	syscall_data.param2 = param2;
+	syscall_data.param3 = param3;
+	syscall_data.param4 = param4;
+	syscall_data.param5 = param5;
+	syscall_data.param6 = param6;
+#ifdef AFS_DARWIN100_ENV
     }
-    if (!error)
-      error=syscall_data.retval;
+#endif
+    if(fd >= 0) {
+	error = ioctl(fd, syscallnum, ioctldata);
+	close(fd);
+    } else {
+	error = -1;
+    }
+    if (!error) {
+#ifdef AFS_DARWIN100_ENV
+	if (is64)
+	    error=syscall64_data.retval;
+	else
+#endif
+	    error=syscall_data.retval;
+    }
 #else
     error =
 	syscall(AFS_SYSCALL, AFSCALL_CALL, param1, param2, param3, param4,

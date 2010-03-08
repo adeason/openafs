@@ -19,8 +19,6 @@
 #include <afs/param.h>
 #endif
 
-RCSID
-    ("$Header: /cvs/openafs/src/rxkad/domestic/fcrypt.c,v 1.11.2.9 2009/06/04 16:12:58 shadow Exp $");
 
 #define DEBUG 0
 #ifdef KERNEL

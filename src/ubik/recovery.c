@@ -10,8 +10,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/ubik/recovery.c,v 1.13.2.9 2009/03/20 03:49:16 shadow Exp $");
 
 #include <sys/types.h>
 #ifdef AFS_NT40_ENV

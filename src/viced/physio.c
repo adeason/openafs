@@ -16,8 +16,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/viced/physio.c,v 1.14.2.1 2007/10/30 15:24:11 shadow Exp $");
 
 #include <stdio.h>
 #include <errno.h>

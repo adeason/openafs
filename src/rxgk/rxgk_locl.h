@@ -31,7 +31,7 @@
  * SUCH DAMAGE.
  */
 
-/* $Id: rxgk_locl.h,v 1.1 2004/08/08 19:21:33 shadow Exp $ */
+/* $Id$ */
 
 #ifndef __RXGK_LOCL_H
 #define __RXGK_LOCL_H

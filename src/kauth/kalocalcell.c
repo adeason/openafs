@@ -14,8 +14,6 @@
 #include <afs/param.h>
 #endif
 
-RCSID
-    ("$Header: /cvs/openafs/src/kauth/kalocalcell.c,v 1.8.2.3 2008/10/27 23:54:09 shadow Exp $");
 
 #if defined(UKERNEL)
 #include "afs/pthread_glock.h"

@@ -27,8 +27,6 @@
      vgonel(struct vnode *vp, struct thread *td);
 #endif
 
-RCSID
-    ("$Header: /cvs/openafs/src/afs/FBSD/osi_vm.c,v 1.11.2.3 2008/08/26 14:02:14 shadow Exp $");
 
 #include "afs/sysincludes.h"	/* Standard vendor system headers */
 #include "afsincludes.h"	/* Afs-based standard headers */

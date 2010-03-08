@@ -18,9 +18,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/dauth/Attic/dpass.c,v 1.7.2.2 2007/11/26 21:21:52 shadow Exp $");
-
 #include <afs/stds.h>
 #include <sys/types.h>
 #include <rx/xdr.h>

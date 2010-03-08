@@ -10,8 +10,6 @@
 #include <afsconfig.h>
 #include "afs/param.h"
 
-RCSID
-    ("$Header: /cvs/openafs/src/afs/afs_daemons.c,v 1.28.2.15 2009/03/20 02:32:59 shadow Exp $");
 
 #ifdef AFS_AIX51_ENV
 #define __FULL_PROTO
@@ -111,6 +109,11 @@ extern int vfs_context_ref;
 #else
 #define vfs_context_ref 1
 #endif
+
+/* This function always holds the GLOCK whilst it is running. The caller
+ * gets the GLOCK before invoking it, and afs_osi_Sleep drops the GLOCK
+ * whilst we are sleeping, and regains it when we're woken up.
+ */
 void
 afs_Daemon(void)
 {
@@ -203,10 +206,13 @@ afs_Daemon(void)
         else
         anumber = VCACHE_FREE + (afs_maxvcount - afs_cacheStats);
 
-        afs_ShakeLooseVCaches(anumber);
-        last5MinCheck = now;
+	ObtainWriteLock(&afs_xvcache, 734);
+	afs_ShakeLooseVCaches(anumber);
+	ReleaseWriteLock(&afs_xvcache);
+	last5MinCheck = now;
     }
 #endif
+
 	if (!afs_CheckServerDaemonStarted) {
 	    /* Do the check here if the correct afsd is not installed. */
 	    if (!cs_warned) {

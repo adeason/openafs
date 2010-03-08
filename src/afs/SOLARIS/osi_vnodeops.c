@@ -10,8 +10,6 @@
 #include <afsconfig.h>
 #include "afs/param.h"
 
-RCSID
-    ("$Header: /cvs/openafs/src/afs/SOLARIS/osi_vnodeops.c,v 1.20.2.13 2009/03/15 18:13:55 shadow Exp $");
 
 /*
  * SOLARIS/osi_vnodeops.c
@@ -1204,6 +1202,13 @@ afs_pathconf(vp, cmd, outdatap, credp)
 	break;
     case _PC_NO_TRUNC:
 	*outdatap = 1;
+	break;
+    case _PC_FILESIZEBITS:
+#ifdef AFS_64BIT_CLIENT
+	*outdatap = 64;
+#else
+	*outdatap = 32;
+#endif
 	break;
     default:
 	return EINVAL;

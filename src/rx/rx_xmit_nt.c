@@ -17,8 +17,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/rx/rx_xmit_nt.c,v 1.7.2.3 2006/02/16 21:49:34 jaltman Exp $");
 
 #if defined(AFS_NT40_ENV) || defined(AFS_DJGPP_ENV)
 

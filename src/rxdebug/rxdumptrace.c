@@ -10,8 +10,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/rxdebug/rxdumptrace.c,v 1.1.4.2 2009/02/17 04:25:42 shadow Exp $");
 
 #ifdef RXDEBUG
 #include <string.h>

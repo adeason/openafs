@@ -29,8 +29,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/log/unlog.c,v 1.6.2.4 2007/11/26 21:21:54 shadow Exp $");
 
 #include <stdio.h>
 #include <potpourri.h>

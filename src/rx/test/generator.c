@@ -52,8 +52,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/rx/test/generator.c,v 1.8.2.1 2007/10/31 04:13:44 shadow Exp $");
 
 #include <stdio.h>
 #include <string.h>

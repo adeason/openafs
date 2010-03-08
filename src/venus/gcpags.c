@@ -10,8 +10,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/venus/gcpags.c,v 1.5 2003/07/15 23:17:22 shadow Exp $");
 
 #include <rx/xdr.h>
 #include <sys/ioctl.h>

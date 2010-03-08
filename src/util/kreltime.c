@@ -10,8 +10,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/util/kreltime.c,v 1.8.2.5 2007/10/30 15:24:09 shadow Exp $");
 
 #include <afs/stds.h>
 #include <sys/types.h>

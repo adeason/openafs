@@ -10,8 +10,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/rxdebug/rxdebug.c,v 1.5.2.4 2008/09/27 20:54:55 jaltman Exp $");
 
 #include <sys/types.h>
 #include <errno.h>

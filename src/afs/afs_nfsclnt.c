@@ -10,8 +10,6 @@
 #include <afsconfig.h>
 #include "afs/param.h"
 
-RCSID
-    ("$Header: /cvs/openafs/src/afs/afs_nfsclnt.c,v 1.12.2.4 2007/10/16 22:03:45 shadow Exp $");
 
 #if !defined(AFS_NONFSTRANS) || defined(AFS_AIX_IAUTH_ENV)
 #include "afs/sysincludes.h"	/* Standard vendor system headers */

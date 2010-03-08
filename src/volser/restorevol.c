@@ -42,8 +42,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/volser/restorevol.c,v 1.13.2.3 2007/11/26 21:21:57 shadow Exp $");
 
 #include <afs/afsint.h>
 #include <afs/nfs.h>

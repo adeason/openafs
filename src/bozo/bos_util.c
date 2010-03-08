@@ -22,8 +22,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/bozo/bos_util.c,v 1.4.2.1 2007/10/30 15:23:50 shadow Exp $");
 
 #include <sys/types.h>
 #include <netinet/in.h>

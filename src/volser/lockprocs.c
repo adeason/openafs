@@ -17,8 +17,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/volser/lockprocs.c,v 1.8.2.3 2008/08/16 19:56:25 shadow Exp $");
 
 #include <sys/types.h>
 #ifdef AFS_NT40_ENV

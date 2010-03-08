@@ -14,8 +14,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/libadmin/test/vos.c,v 1.6.2.1 2007/10/31 04:13:42 shadow Exp $");
 
 #include "vos.h"
 

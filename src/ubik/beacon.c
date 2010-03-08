@@ -10,8 +10,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/ubik/beacon.c,v 1.19.2.7 2008/04/09 16:40:20 shadow Exp $");
 
 #include <sys/types.h>
 #ifdef AFS_NT40_ENV

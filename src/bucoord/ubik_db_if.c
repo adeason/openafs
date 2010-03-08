@@ -12,8 +12,6 @@
 #include <afsconfig.h>
 #include <afs/stds.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/bucoord/ubik_db_if.c,v 1.10.2.6 2009/04/27 19:17:41 shadow Exp $");
 
 #include <sys/types.h>
 #include <fcntl.h>

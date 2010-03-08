@@ -46,8 +46,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/vlserver/vldb_check.c,v 1.11.2.9 2009/02/17 14:34:41 shadow Exp $");
 
 #include <stdlib.h>
 #include <sys/types.h>

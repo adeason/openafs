@@ -15,12 +15,12 @@
 @SET_MAKE@
 
 #
-# $Id: Makefile.in,v 1.1 2004/08/08 19:21:33 shadow Exp $
+# $Id$
 #
 
-# $Id: Makefile.in,v 1.1 2004/08/08 19:21:33 shadow Exp $
+# $Id$
 
-# $Id: Makefile.in,v 1.1 2004/08/08 19:21:33 shadow Exp $
+# $Id$
 
 
 SOURCES = $(librxgkclient_la_SOURCES) $(librxgkserver_la_SOURCES) $(test_client_SOURCES) $(test_server_SOURCES)

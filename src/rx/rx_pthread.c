@@ -18,8 +18,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/rx/rx_pthread.c,v 1.17.2.9 2008/03/10 22:35:36 shadow Exp $");
 
 #include <sys/types.h>
 #include <errno.h>
@@ -423,6 +421,13 @@ rxi_Sendmsg(osi_socket socket, struct msghdr *msg_p, int flags)
 #endif
 	dpf(("rxi_sendmsg failed, error %d\n", errno));
 	fflush(stdout);
+#ifndef AFS_NT40_ENV
+        if (errno > 0)
+          return -errno;
+#else
+            if (WSAGetLastError() > 0)
+              return -WSAGetLastError();
+#endif
 	return -1;
     }
     return 0;

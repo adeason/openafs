@@ -16,8 +16,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/libadmin/samples/rxstat_clear_peer.c,v 1.6 2003/10/24 06:26:10 shadow Exp $");
 
 #ifdef AFS_NT40_ENV
 #include <winsock2.h>

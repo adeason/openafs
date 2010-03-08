@@ -49,9 +49,6 @@ Generic install command.  Options are:
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/pinstall/Attic/install.c,v 1.23.2.1 2008/07/28 12:17:41 shadow Exp $");
-
 #include <stdio.h>
 #include <pwd.h>
 #include <grp.h>

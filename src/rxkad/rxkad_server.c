@@ -14,8 +14,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/rxkad/rxkad_server.c,v 1.14.2.11 2008/01/23 04:22:51 shadow Exp $");
 
 #include <afs/stds.h>
 #include <sys/types.h>

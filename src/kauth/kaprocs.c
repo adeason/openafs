@@ -10,8 +10,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/kauth/kaprocs.c,v 1.16.2.2 2007/04/10 18:43:43 shadow Exp $");
 
 #include <afs/stds.h>
 #include <errno.h>

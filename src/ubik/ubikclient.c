@@ -14,8 +14,6 @@
 #include <afs/param.h>
 #endif
 
-RCSID
-    ("$Header: /cvs/openafs/src/ubik/ubikclient.c,v 1.8.2.4 2009/04/27 18:33:04 shadow Exp $");
 
 #if defined(UKERNEL)
 #include "afs/sysincludes.h"

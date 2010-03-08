@@ -12,8 +12,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/budb/ol_verify.c,v 1.13.2.3 2009/03/26 14:30:44 shadow Exp $");
 
 #include <stdio.h>
 #ifdef AFS_NT40_ENV

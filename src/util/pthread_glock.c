@@ -10,12 +10,11 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/util/pthread_glock.c,v 1.5.2.1 2005/09/21 15:14:47 shadow Exp $");
 
 #if defined(AFS_NT40_ENV) && defined(AFS_PTHREAD_ENV)
 #define AFS_GRMUTEX_DECLSPEC __declspec(dllexport)
 #endif
+#ifdef AFS_PTHREAD_ENV
 #include <afs/pthread_glock.h>
 #include <string.h>
 
@@ -85,3 +84,4 @@ pthread_recursive_mutex_unlock(pthread_recursive_mutex_t * mut)
     }
     return rc;
 }
+#endif

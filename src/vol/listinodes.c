@@ -22,8 +22,6 @@
 
 #include <string.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/vol/listinodes.c,v 1.13.2.8 2009/03/23 18:19:57 shadow Exp $");
 
 #ifndef AFS_NAMEI_ENV
 #if defined(AFS_LINUX20_ENV) || defined(AFS_SUN4_ENV)
@@ -1741,6 +1739,14 @@ inode_ConvertROtoRWvolume(char *pname, afs_int32 volumeId)
 		
 	    FDH_CLOSE(fdP);
 	    FDH_CLOSE(fdP2);
+
+	    /* Unlink the old special inode; otherwise we will get duplicate
+	     * special inodes if we recreate the RO again */
+	    if (IH_DEC(ih, specinos[j].inodeNumber, volumeId) == -1) {
+		Log("IH_DEC failed: %x, %s, %u errno %d\n", ih,
+		    PrintInode(NULL, specinos[j].inodeNumber), volumeId, errno);
+	    }
+
 	    IH_RELEASE(ih);
 	    IH_RELEASE(ih2);
 	}

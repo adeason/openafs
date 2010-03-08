@@ -18,8 +18,6 @@
 #include <afs/param.h>
 #endif
 
-RCSID
-    ("$Header: /cvs/openafs/src/kauth/token.c,v 1.9.2.2 2007/10/30 15:23:54 shadow Exp $");
 
 #if defined(UKERNEL)
 #include "afs/sysincludes.h"

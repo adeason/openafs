@@ -16,13 +16,14 @@
 #include <afsconfig.h>
 #include "afs/param.h"
 
-RCSID
-    ("$Header: /cvs/openafs/src/afs/afs_init.c,v 1.28.2.10 2009/06/24 21:30:14 shadow Exp $");
 
 #include "afs/stds.h"
 #include "afs/sysincludes.h"	/* Standard vendor system headers */
 #include "afsincludes.h"	/* Afs-based standard headers */
 #include "afs/afs_stats.h"	/* afs statistics */
+#if defined(AFS_LINUX26_ENV) && defined(STRUCT_TASK_HAS_CRED)
+#include <linux/cred.h>
+#endif
 
 /* Exported variables */
 struct osi_dev cacheDev;	/*Cache device */
@@ -43,6 +44,9 @@ struct volume *Initialafs_freeVolList;
 int afs_memvolumes = 0;
 #if defined(AFS_XBSD_ENV)
 static struct vnode *volumeVnode;
+#endif
+#if defined(AFS_LINUX26_ENV) && defined(STRUCT_TASK_HAS_CRED)
+const struct cred *cache_creds;
 #endif
 
 /* This is the kernel side of the dynamic vcache setting */
@@ -140,6 +144,16 @@ afs_CacheInit(afs_int32 astatSize, afs_int32 afiles, afs_int32 ablocks,
     afs_cacheStats = astatSize;
     afs_vcacheInit(astatSize);
     afs_dcacheInit(afiles, ablocks, aDentries, achunk, aflags);
+#if defined(AFS_LINUX26_ENV) && defined(STRUCT_TASK_HAS_CRED)
+    /*
+     * Save current credentials for later access to disk cache files.
+     * If selinux, apparmor or other security modules are enabled,
+     * they might deny access to cache files if the userspace process
+     * is restricted.  Save the credentials used at cache initialisation
+     * for later use when opening cache files.
+     */
+    cache_creds = get_current_cred();
+#endif
 #ifdef AFS_64BIT_CLIENT
 #ifdef AFS_VM_RDWR_ENV
     afs_vmMappingEnd = AFS_CHUNKBASE(0x7fffffff);
@@ -412,7 +426,17 @@ afs_InitCacheInfo(register char *afile)
 	if (!VFS_STATFS(filevp->v_vfsp, &st))
 #endif /* SGI... */
 #if	defined(AFS_SUN5_ENV) || defined(AFS_HPUX100_ENV)
-	    afs_fsfragsize = st.f_frsize - 1;
+	    if (strcmp("zfs", st.f_basetype) == 0) {
+		/*
+		 * Files in ZFS can take up to around the next
+		 * recordsize boundary after being truncated. recordsize
+		 * is reported in statvfs by f_bsize, so use that
+		 * instead.
+		 */
+		afs_fsfragsize = st.f_bsize - 1;
+	    } else {
+		afs_fsfragsize = st.f_frsize - 1;
+	    }
 #else
 	    afs_fsfragsize = st.f_bsize - 1;
 #endif
@@ -444,6 +468,8 @@ afs_InitCacheInfo(register char *afile)
 #endif /* AFS_LINUX20_ENV */
     AFS_RELE(filevp);
 #endif /* AFS_LINUX22_ENV */
+    if (afs_fsfragsize < 1023)
+	afs_fsfragsize = 1023;
     tfile = osi_UFSOpen(cacheInode);
     afs_osi_Stat(tfile, &tstat);
     cacheInfoModTime = tstat.mtime;
@@ -677,6 +703,9 @@ shutdown_cache(void)
 	memset((char *)&cacheDev, 0, sizeof(struct osi_dev));
 	osi_dnlc_shutdown();
     }
+#if defined(AFS_LINUX26_ENV) && defined(STRUCT_TASK_HAS_CRED)
+    put_cred(cache_creds);
+#endif
 }				/*shutdown_cache */
 
 

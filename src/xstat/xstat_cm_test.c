@@ -16,8 +16,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/xstat/xstat_cm_test.c,v 1.8.2.6 2007/11/26 21:22:00 shadow Exp $");
 
 #include "xstat_cm.h"		/*Interface for xstat_cm module */
 #include <cmd.h>		/*Command line interpreter */

@@ -10,9 +10,6 @@
 #include <afsconfig.h>
 #include "afs/param.h"
 
-RCSID
-    ("$Header: /cvs/openafs/src/rx/DUX/Attic/rx_knet.c,v 1.11.2.1 2005/04/14 02:31:45 shadow Exp $");
-
 #ifdef AFS_DUX40_ENV
 #include "rx/rx_kcommon.h"
 

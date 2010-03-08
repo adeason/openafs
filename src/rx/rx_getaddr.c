@@ -10,8 +10,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/rx/rx_getaddr.c,v 1.15.2.14 2009/04/27 18:33:04 shadow Exp $");
 
 #ifndef AFS_DJGPP_ENV
 #ifndef KERNEL
@@ -144,6 +142,32 @@ rt_xaddrs(caddr_t cp, caddr_t cplim, struct rt_addrinfo *rtinfo)
 ** the buffer has to be passed in by the caller
 */
 #if defined(AFS_DARWIN_ENV) || defined(AFS_XBSD_ENV)
+#if defined(AFS_OBSD42_ENV)
+void
+ifm_fixversion(char *buffer, size_t *size) {
+    struct if_msghdr *ifm;
+    char *b = buffer;
+    char *s, *t;
+
+    if ((t = malloc(*size)) != NULL) {
+	memcpy(t, buffer, *size);
+
+	for (s = t; s < t + *size; s += ifm->ifm_msglen) {
+	    ifm = (struct if_msghdr *)s;
+
+	    if (ifm->ifm_version == RTM_VERSION) {
+		memcpy(b, ifm, ifm->ifm_msglen);
+		b += ifm->ifm_msglen;
+	    }
+	}
+
+	free(t);
+
+	*size = b - buffer;
+    }
+}
+#endif
+
 int
 rx_getAllAddr_internal(afs_int32 buffer[], int maxSize, int loopbacks)
 {
@@ -170,6 +194,9 @@ rx_getAllAddr_internal(afs_int32 buffer[], int maxSize, int loopbacks)
 	free(buf);
 	return 0;
     }
+#if defined(AFS_OBSD42_ENV)
+    ifm_fixversion(buf, &needed);
+#endif
     lim = buf + needed;
     next = buf;
     while (next < lim) {
@@ -254,6 +281,9 @@ rxi_getAllAddrMaskMtu(afs_int32 addrBuffer[], afs_int32 maskBuffer[],
 	free(buf);
 	return 0;
     }
+#if defined(AFS_OBSD42_ENV)
+    ifm_fixversion(buf, &needed);
+#endif
     s = socket(PF_INET, SOCK_DGRAM, 0);
     if (s < 0)
 	return 0;

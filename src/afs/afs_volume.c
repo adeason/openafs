@@ -18,8 +18,6 @@
 #include <afsconfig.h>
 #include "afs/param.h"
 
-RCSID
-    ("$Header: /cvs/openafs/src/afs/afs_volume.c,v 1.26.2.8 2009/06/24 21:30:14 shadow Exp $");
 
 #include "afs/stds.h"
 #include "afs/sysincludes.h"	/* Standard vendor system headers */
@@ -432,7 +430,7 @@ afs_GetVolume(struct VenusFid *afid, struct vrequest *areq,
 
     tv = afs_FindVolume(afid, locktype);
     if (!tv) {
-	if (afs_IsDynrootFid(afid)) {
+	if (afs_IsDynrootAnyFid(afid)) {
 	    tv = afs_NewDynrootVolume(afid);
 	} else {
 	    bp = afs_cv2string(&tbuf[CVBS], afid->Fid.Volume);

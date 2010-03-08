@@ -17,8 +17,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/util/strlcat.c,v 1.2.2.1 2007/10/31 04:26:29 shadow Exp $");
 
 #ifndef HAVE_STRLCAT
 

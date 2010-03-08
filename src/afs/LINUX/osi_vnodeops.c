@@ -21,8 +21,6 @@
 #include <afsconfig.h>
 #include "afs/param.h"
 
-RCSID
-    ("$Header: /cvs/openafs/src/afs/LINUX/osi_vnodeops.c,v 1.81.2.83 2009/07/03 13:18:32 shadow Exp $");
 
 #include "afs/sysincludes.h"
 #include "afsincludes.h"
@@ -52,6 +50,9 @@ RCSID
 #if defined(AFS_LINUX26_ENV)
 #define UnlockPage(pp) unlock_page(pp)
 extern struct backing_dev_info afs_backing_dev_info;
+#if !defined(WRITEPAGE_ACTIVATE)
+#define WRITEPAGE_ACTIVATE AOP_WRITEPAGE_ACTIVATE
+#endif
 #endif
 
 extern struct vcache *afs_globalVp;
@@ -310,7 +311,9 @@ afs_linux_readdir(struct file *fp, void *dirbuf, filldir_t filldir)
 		/* clean up from afs_FindVCache */
 		afs_PutVCache(tvc);
 	    }
+	    AFS_GUNLOCK();
 	    code = (*filldir) (dirbuf, de->name, len, offset, ino, type);
+	    AFS_GLOCK();
 	}
 #else
 	code = (*filldir) (dirbuf, de->name, len, offset, ino);
@@ -476,13 +479,22 @@ afs_linux_lock(struct file *fp, int cmd, struct file_lock *flp)
     struct vcache *vcp = VTOAFS(FILE_INODE(fp));
     cred_t *credp = crref();
     struct AFS_FLOCK flock;
+#if defined(POSIX_TEST_LOCK_CONFLICT_ARG)
+    struct file_lock conflict;
+#elif defined(POSIX_TEST_LOCK_RETURNS_CONFLICT)
+    struct file_lock *conflict;
+#endif
+    
     /* Convert to a lock format afs_lockctl understands. */
     memset((char *)&flock, 0, sizeof(flock));
     flock.l_type = flp->fl_type;
     flock.l_pid = flp->fl_pid;
     flock.l_whence = 0;
     flock.l_start = flp->fl_start;
-    flock.l_len = flp->fl_end - flp->fl_start;
+    if (flp->fl_end == OFFSET_MAX)
+	flock.l_len = 0; /* Lock to end of file */
+    else
+	flock.l_len = flp->fl_end - flp->fl_start + 1;
 
     /* Safe because there are no large files, yet */
 #if defined(F_GETLK64) && (F_GETLK != F_GETLK64)
@@ -501,12 +513,12 @@ afs_linux_lock(struct file *fp, int cmd, struct file_lock *flp)
 #ifdef AFS_LINUX24_ENV
     if ((code == 0 || flp->fl_type == F_UNLCK) && 
         (cmd == F_SETLK || cmd == F_SETLKW)) {
-#ifdef POSIX_LOCK_FILE_WAIT_ARG
+# ifdef POSIX_LOCK_FILE_WAIT_ARG
 	code = posix_lock_file(fp, flp, 0);
-#else
+# else
 	flp->fl_flags &=~ FL_SLEEP;
 	code = posix_lock_file(fp, flp);
-#endif 
+# endif 
 	if (code && flp->fl_type != F_UNLCK) {
 	    struct AFS_FLOCK flock2;
 	    flock2 = flock;
@@ -516,12 +528,43 @@ afs_linux_lock(struct file *fp, int cmd, struct file_lock *flp)
 	    AFS_GUNLOCK();
 	}
     }
+    /* If lockctl says there are no conflicting locks, then also check with the
+     * kernel, as lockctl knows nothing about byte range locks
+     */
+    if (code == 0 && cmd == F_GETLK && flock.l_type == F_UNLCK) {
+# if defined(POSIX_TEST_LOCK_CONFLICT_ARG)
+        if (posix_test_lock(fp, flp, &conflict)) {
+            locks_copy_lock(flp, &conflict);
+            flp->fl_type = F_UNLCK;
+            crfree(credp);
+            return 0;
+        }
+# elif defined(POSIX_TEST_LOCK_RETURNS_CONFLICT)
+	if ((conflict = posix_test_lock(fp, flp))) {
+	    locks_copy_lock(flp, conflict);
+	    flp->fl_type = F_UNLCK;
+	    crfee(credp);
+	    return 0;
+	}
+# else
+        posix_test_lock(fp, flp);
+        /* If we found a lock in the kernel's structure, return it */
+        if (flp->fl_type != F_UNLCK) {
+            crfree(credp);
+            return 0;
+        }
+# endif
+    }
+    
 #endif
     /* Convert flock back to Linux's file_lock */
     flp->fl_type = flock.l_type;
     flp->fl_pid = flock.l_pid;
     flp->fl_start = flock.l_start;
-    flp->fl_end = flock.l_start + flock.l_len;
+    if (flock.l_len == 0)
+	flp->fl_end = OFFSET_MAX; /* Lock to end of file */
+    else
+	flp->fl_end = flock.l_start + flock.l_len - 1;
 
     crfree(credp);
     return afs_convert_code(code);
@@ -540,7 +583,7 @@ afs_linux_flock(struct file *fp, int cmd, struct file_lock *flp) {
     flock.l_pid = flp->fl_pid;
     flock.l_whence = 0;
     flock.l_start = 0;
-    flock.l_len = OFFSET_MAX;
+    flock.l_len = 0;
 
     /* Safe because there are no large files, yet */
 #if defined(F_GETLK64) && (F_GETLK != F_GETLK64)
@@ -1594,11 +1637,7 @@ afs_linux_writepage_sync(struct inode *ip, struct page *pp,
 	crfree(credp);
 	kunmap(pp);
 #ifdef AFS_LINUX26_ENV
-#if defined(WRITEPAGE_ACTIVATE)
 	return WRITEPAGE_ACTIVATE;
-#else
-	return AOP_WRITEPAGE_ACTIVATE;
-#endif
 #else
 	/* should mark it dirty? */
 	return(0); 
@@ -1638,7 +1677,6 @@ afs_linux_writepage_sync(struct inode *ip, struct page *pp,
     return code;
 }
 
-
 static int
 #ifdef AOP_WRITEPAGE_TAKES_WRITEBACK_CONTROL
 afs_linux_writepage(struct page *pp, struct writeback_control *wbc)
@@ -1653,13 +1691,8 @@ afs_linux_writepage(struct page *pp)
     long status;
 
 #if defined(AFS_LINUX26_ENV)
-    if (PageReclaim(pp)) {
-# if defined(WRITEPAGE_ACTIVATE)
+    if (PageReclaim(pp))
 	return WRITEPAGE_ACTIVATE;
-# else 
-	return AOP_WRITEPAGE_ACTIVATE;
-# endif
-    }
 #else
     if (PageLaunder(pp)) {
 	return(fail_writepage(pp));
@@ -1680,10 +1713,8 @@ afs_linux_writepage(struct page *pp)
   do_it:
     status = afs_linux_writepage_sync(inode, pp, 0, offset);
     SetPageUptodate(pp);
-#if defined(WRITEPAGE_ACTIVATE)
+#if defined(AFS_LINUX26_ENV)
     if ( status != WRITEPAGE_ACTIVATE )
-#else
-    if ( status != AOP_WRITEPAGE_ACTIVATE )
 #endif
 	UnlockPage(pp);
     if (status == offset)
@@ -1787,6 +1818,8 @@ afs_linux_commit_write(struct file *file, struct page *page, unsigned offset,
 #if !defined(AFS_LINUX26_ENV)
     kunmap(page);
 #endif
+    if (code == WRITEPAGE_ACTIVATE)
+	code = -EIO;
 
     return code;
 }
@@ -1815,9 +1848,11 @@ afs_linux_write_end(struct file *file, struct address_space *mapping,
     unsigned from = pos & (PAGE_CACHE_SIZE - 1);
 
     code = afs_linux_writepage_sync(file->f_dentry->d_inode, page,
-                                    from, copied);
+				    from, copied);
     unlock_page(page);
     page_cache_release(page);
+    if (code == WRITEPAGE_ACTIVATE)
+	code = -EIO;
     return code;
 }
 

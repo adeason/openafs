@@ -11,8 +11,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/bucoord/server.c,v 1.5 2003/07/15 23:14:47 shadow Exp $");
 
 #ifdef AFS_NT40_ENV
 #include <winsock2.h>

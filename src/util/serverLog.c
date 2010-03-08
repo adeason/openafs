@@ -19,8 +19,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/util/serverLog.c,v 1.22.2.14 2008/03/10 22:35:36 shadow Exp $");
 
 #include <stdio.h>
 #ifdef AFS_NT40_ENV

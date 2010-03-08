@@ -31,7 +31,7 @@
  * SUCH DAMAGE.
  */
 
-/* $Id: md5.h,v 1.1.2.1 2004/08/25 07:09:42 shadow Exp $ */
+/* $Id$ */
 
 #include <stdlib.h>
 #ifdef HAVE_SYS_TYPES_H

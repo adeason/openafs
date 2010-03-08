@@ -1,7 +1,7 @@
 /* 
  * osi_misc.c
  *
- * $Id: osi_misc.c,v 1.4.2.1 2009/03/27 15:55:45 shadow Exp $
+ * $Id$
  */
 
 /*
@@ -46,8 +46,6 @@ such damages.
 #include <afsconfig.h>
 #include "afs/param.h"
 
-RCSID
-    ("$Header: /cvs/openafs/src/afs/OBSD/osi_misc.c,v 1.4.2.1 2009/03/27 15:55:45 shadow Exp $");
 
 #include "afs/sysincludes.h"	/* Standard vendor system headers */
 #include "afs/afsincludes.h"	/* Afs-based standard headers */

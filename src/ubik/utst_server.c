@@ -10,8 +10,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/ubik/utst_server.c,v 1.8.2.1 2007/10/30 15:24:06 shadow Exp $");
 
 #include <afs/stds.h>
 #include <sys/types.h>

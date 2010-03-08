@@ -10,8 +10,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/update/utils.c,v 1.10.2.1 2007/10/30 15:24:08 shadow Exp $");
 
 #include <afs/stds.h>
 #include <rx/rxkad.h>

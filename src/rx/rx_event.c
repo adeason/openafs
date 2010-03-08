@@ -18,8 +18,6 @@
 #include <sys/time_impl.h>
 #endif
 
-RCSID
-    ("$Header: /cvs/openafs/src/rx/rx_event.c,v 1.14.2.5 2008/08/26 14:02:24 shadow Exp $");
 
 #ifdef KERNEL
 #ifndef UKERNEL

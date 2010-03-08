@@ -18,8 +18,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/gtx/X11windows.c,v 1.6 2003/07/15 23:15:11 shadow Exp $");
 
 #include "gtxX11win.h"		/*Interface definition */
 #include <stdio.h>		/*Standard I/O package */

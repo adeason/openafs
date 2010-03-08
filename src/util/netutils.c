@@ -19,8 +19,6 @@
 #include <afs/param.h>
 #endif
 
-RCSID
-    ("$Header: /cvs/openafs/src/util/netutils.c,v 1.13.2.5 2007/10/31 12:36:03 shadow Exp $");
 
 #include <stdlib.h>
 #include <stdio.h>

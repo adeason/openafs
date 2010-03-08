@@ -10,8 +10,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/bucoord/vol_sets.c,v 1.10.2.6 2007/11/26 21:21:50 shadow Exp $");
 
 #include <afs/stds.h>
 #include <sys/types.h>

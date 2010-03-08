@@ -10,9 +10,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/rx/Attic/rxdebug.c,v 1.15.2.5 2005/04/03 05:33:09 jaltman Exp $");
-
 #include <sys/types.h>
 #include <errno.h>
 #ifdef AFS_NT40_ENV

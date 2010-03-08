@@ -10,8 +10,6 @@
 #include <afsconfig.h>
 #include "afs/param.h"
 
-RCSID
-    ("$Header: /cvs/openafs/src/afs/afs_memcache.c,v 1.15.2.6 2007/06/23 15:31:11 shadow Exp $");
 
 #include "afs/sysincludes.h"	/* Standard vendor system headers */
 #ifndef AFS_LINUX22_ENV

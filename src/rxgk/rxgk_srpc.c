@@ -8,8 +8,6 @@
 
 #include "rxgk_locl.h"
 
-RCSID("$Id: rxgk_srpc.c,v 1.1 2004/08/08 19:21:33 shadow Exp $");
-
 #include <errno.h>
 
 #include <rx/rx.h>

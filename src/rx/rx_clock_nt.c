@@ -13,8 +13,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/rx/rx_clock_nt.c,v 1.9.2.4 2006/07/31 21:51:21 shadow Exp $");
 
 #ifdef AFS_NT40_ENV
 #include <stdio.h>

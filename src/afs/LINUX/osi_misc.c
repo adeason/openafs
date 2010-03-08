@@ -14,8 +14,6 @@
 #include <afsconfig.h>
 #include "afs/param.h"
 
-RCSID
-    ("$Header: /cvs/openafs/src/afs/LINUX/osi_misc.c,v 1.34.2.12 2008/03/10 19:05:28 shadow Exp $");
 
 #include "afs/sysincludes.h"
 #include "afsincludes.h"
@@ -66,9 +64,10 @@ osi_lookupname_internal(char *aname, int followlink, struct vfsmount **mnt,
     }
     return code;
 }
+
 int
 osi_lookupname(char *aname, uio_seg_t seg, int followlink, 
-			struct dentry **dpp)
+	       struct dentry **dpp)
 {
     int code;
     char *tname;

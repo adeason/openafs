@@ -14,8 +14,6 @@
 #include <afs/param.h>
 #endif
 
-RCSID
-    ("$Header: /cvs/openafs/src/kauth/client.c,v 1.12.2.3 2007/10/30 15:23:53 shadow Exp $");
 
 #if defined(UKERNEL)
 #ifdef HAVE_UNISTD_H

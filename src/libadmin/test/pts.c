@@ -14,8 +14,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/libadmin/test/pts.c,v 1.5.2.1 2007/10/31 04:13:42 shadow Exp $");
 
 #include "pts.h"
 

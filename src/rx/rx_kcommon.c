@@ -14,8 +14,6 @@
 #include <afsconfig.h>
 #include "afs/param.h"
 
-RCSID
-    ("$Header: /cvs/openafs/src/rx/rx_kcommon.c,v 1.44.2.22 2009/05/30 17:56:42 shadow Exp $");
 
 #include "rx/rx_kcommon.h"
 
@@ -775,6 +773,8 @@ rxi_FindIfnet(afs_uint32 addr, afs_uint32 * maskp)
     s.sin_addr.s_addr = addr;
 #ifdef AFS_DARWIN80_ENV
     ifad = ifaddr_withnet((struct sockaddr *)&s);
+#elif AFS_OBSD46_ENV
+    ifad = ifa_ifwithnet((struct sockaddr *)&s, 0);
 #else
     ifad = ifa_ifwithnet((struct sockaddr *)&s);
 #endif

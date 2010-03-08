@@ -10,8 +10,6 @@
 #include <afsconfig.h>
 #include "afs/param.h"
 
-RCSID
-    ("$Header: /cvs/openafs/src/afs/afs_nfsdisp.c,v 1.18.2.5 2009/01/15 13:27:43 shadow Exp $");
 
 /* Ugly Ugly Ugly  but precludes conflicting XDR macros; We want kernel xdr */
 #define __XDR_INCLUDE__

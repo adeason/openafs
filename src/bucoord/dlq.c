@@ -14,9 +14,6 @@
 #endif
 #include <stdio.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/bucoord/dlq.c,v 1.9.2.2 2007/11/26 21:21:50 shadow Exp $");
-
 #include "bc.h"
 #include <afs/bubasics.h>
 

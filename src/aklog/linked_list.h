@@ -1,5 +1,5 @@
 /* 
- * $Id: linked_list.h,v 1.1.2.2 2008/04/01 17:44:52 shadow Exp $
+ * $Id$
  *
  * This is the header file for a general list linked package.
  * 

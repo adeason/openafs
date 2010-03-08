@@ -10,8 +10,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/butc/tcmain.c,v 1.14.2.8 2008/03/10 22:35:34 shadow Exp $");
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -66,8 +64,9 @@ RCSID
 #define TL_PREFIX  "TL"
 #define CFG_PREFIX "CFG"
 
+extern int TC_ExecuteRequest(struct rx_call *);
+
 struct ubik_client *cstruct;
-extern void TC_ExecuteRequest();
 FILE *logIO, *ErrorlogIO, *centralLogIO, *lastLogIO;
 char lFile[AFSDIR_PATH_MAX];
 char logFile[256];

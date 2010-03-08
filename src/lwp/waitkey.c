@@ -22,8 +22,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/lwp/waitkey.c,v 1.13.2.2 2009/04/27 18:33:04 shadow Exp $");
 
 #include <stdio.h>
 #include <sys/types.h>

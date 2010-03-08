@@ -82,8 +82,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/viced/callback.c,v 1.55.2.30 2009/03/19 20:13:23 shadow Exp $");
 
 #include <stdio.h>
 #include <stdlib.h>		/* for malloc() */
@@ -613,12 +611,13 @@ int
 AddCallBack1(struct host *host, AFSFid * fid, afs_uint32 * thead, int type,
 	     int locked)
 {
-    int retVal;
+    int retVal = 0;
     H_LOCK;
     if (!locked) {
 	h_Lock_r(host);
     }
-    retVal = AddCallBack1_r(host, fid, thead, type, 1);
+    if (!(host->hostFlags & HOSTDELETED))
+        retVal = AddCallBack1_r(host, fid, thead, type, 1);
 
     if (!locked) {
 	h_Unlock_r(host);
@@ -659,6 +658,11 @@ AddCallBack1_r(struct host *host, AFSFid * fid, afs_uint32 * thead, int type,
     if (!locked) {
 	h_Lock_r(host);		/* this can yield, so do it before we get any */
 	/* fragile info */
+        if (host->hostFlags & HOSTDELETED) {
+            host->Console &= ~2;
+            h_Unlock_r(host);
+            return 0;
+        }
     }
 
     fe = FindFE(fid);
@@ -839,12 +843,14 @@ MultiBreakCallBack_r(struct cbstruct cba[], int ncbas,
 
 			H_LOCK;
 			h_Lock_r(hp); 
-			hp->hostFlags |= VENUSDOWN;
-		/**
-		  * We always go into AddCallBack1_r with the host locked
-		  */
-			AddCallBack1_r(hp, afidp->AFSCBFids_val, itot(idx),
-				       CB_DELAYED, 1);
+                        if (!(hp->hostFlags & HOSTDELETED)) {
+                            hp->hostFlags |= VENUSDOWN;
+                            /**
+                             * We always go into AddCallBack1_r with the host locked
+                             */
+                            AddCallBack1_r(hp, afidp->AFSCBFids_val, itot(idx),
+                                           CB_DELAYED, 1);
+                        }
 			h_Unlock_r(hp); 
 			H_UNLOCK;
 		    }
@@ -934,10 +940,12 @@ BreakCallBack(struct host *xhost, AFSFid * fid, int flag)
 			     ntohs(thishost->port)));
 		    cb->status = CB_DELAYED;
 		} else {
-		    h_Hold_r(thishost);
-		    cba[ncbas].hp = thishost;
-		    cba[ncbas].thead = cb->thead;
-		    ncbas++;
+		    if (!(thishost->hostFlags & HOSTDELETED)) {
+			h_Hold_r(thishost);
+			cba[ncbas].hp = thishost;
+			cba[ncbas].thead = cb->thead;
+			ncbas++;
+		    }
 		    TDel(cb);
 		    HDel(cb);
 		    CDel(cb, 1);	/* Usually first; so this delete 
@@ -979,6 +987,7 @@ DeleteCallBack(struct host *host, AFSFid * fid)
     cbstuff.DeleteCallBacks++;
 
     h_Lock_r(host);
+    /* do not care if the host has been HOSTDELETED */
     fe = FindFE(fid);
     if (!fe) {
 	h_Unlock_r(host);
@@ -1317,11 +1326,14 @@ BreakVolumeCallBacks(afs_uint32 volume)
 		register struct CallBack *cbnext;
 		for (cb = itocb(fe->firstcb); cb; cb = cbnext) {
 		    host = h_itoh(cb->hhead);
-		    h_Hold_r(host);
-		    cbnext = itocb(cb->cnext);
-		    if (!tthead || (TNorm(tthead) < TNorm(cb->thead))) {
-			tthead = cb->thead;
+
+		    if (!(host->hostFlags & HOSTDELETED)) {
+			h_Hold_r(host);
+			if (!tthead || (TNorm(tthead) < TNorm(cb->thead))) {
+			    tthead = cb->thead;
+			}
 		    }
+		    cbnext = itocb(cb->cnext);
 		    TDel(cb);
 		    HDel(cb);
 		    FreeCB(cb);
@@ -1468,9 +1480,11 @@ BreakLaterCallBacks(void)
 	    cbnext = itocb(cb->cnext);
 	    host = h_itoh(cb->hhead);
 	    if (cb->status == CB_DELAYED) {
-		h_Hold_r(host);
-		if (!tthead || (TNorm(tthead) < TNorm(cb->thead))) {
-		    tthead = cb->thead;
+		if (!(host->hostFlags & HOSTDELETED)) {
+		    h_Hold_r(host);
+		    if (!tthead || (TNorm(tthead) < TNorm(cb->thead))) {
+			tthead = cb->thead;
+		    }
 		}
 		TDel(cb);
 		HDel(cb);
@@ -1672,8 +1686,10 @@ GetSomeSpace_r(struct host *hostp, int locked)
 		    h_Release_r(hp);
 		return 0;
 	    }
-	    if (lih_host_held2)
+	    if (lih_host_held2) {
 		h_Release_r(hp);
+		hp = NULL;
+	    }
 	    hp1 = hp;
 	    hp2 = hostList;
 	} else {
@@ -1718,6 +1734,14 @@ ClearHostCallbacks_r(struct host *hp, int locked)
     ViceLog(5,
 	    ("GSS: Delete longest inactive host %s\n",
 	     afs_inet_ntoa_r(hp->host, hoststr)));
+
+    if ((hp->hostFlags & HOSTDELETED)) {
+	/* hp could go away after reacquiring H_LOCK in h_NBLock_r, so we can't
+	 * really use it; its callbacks will get cleared anyway when
+	 * h_TossStuff_r gets its hands on it */
+	return 1;
+    }
+
     if (!(held = h_Held_r(hp)))
 	h_Hold_r(hp);
 
@@ -1746,7 +1770,7 @@ ClearHostCallbacks_r(struct host *hp, int locked)
     DeleteAllCallBacks_r(hp, 1);
     if (hp->hostFlags & VENUSDOWN) {
 	hp->hostFlags &= ~RESETDONE;	/* remember that we must do a reset */
-    } else {
+    } else if (!(hp->hostFlags & HOSTDELETED)) {
 	/* host is up, try a call */
 	hp->hostFlags &= ~ALTADDR;	/* alternate addresses are invalid */
 	cb_conn = hp->callback_rxcon;

@@ -19,8 +19,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/vol/volume.c,v 1.35.2.16 2009/03/23 18:19:57 shadow Exp $");
 
 #include <rx/xdr.h>
 #include <afs/afsint.h>
@@ -1099,7 +1097,6 @@ VPutVolume_r(register Volume * vp)
 #endif /* AFS_PTHREAD_ENV */
 	}
 	if (vp->shuttingDown) {
-	    VReleaseVolumeHandles_r(vp);
 	    FreeVolume(vp);
 	    if (programType == fileServer)
 #ifdef AFS_PTHREAD_ENV
@@ -1274,8 +1271,6 @@ VForceOffline_r(Volume * vp)
 #else /* AFS_PTHREAD_ENV */
     LWP_NoYieldSignal(VPutVolume);
 #endif /* AFS_PTHREAD_ENV */
-
-    VReleaseVolumeHandles_r(vp);
 
 }
 
@@ -1575,6 +1570,7 @@ FreeVolume(Volume * vp)
     for (i = 0; i < nVNODECLASSES; i++)
 	if (vp->vnodeIndex[i].bitmap)
 	    free(vp->vnodeIndex[i].bitmap);
+    VReleaseVolumeHandles_r(vp);
     FreeVolumeHeader(vp);
     DeleteVolumeFromHashTable(vp);
     free(vp);
@@ -1794,6 +1790,7 @@ void
 VBumpVolumeUsage_r(register Volume * vp)
 {
     unsigned int now = FT_ApproxTime();
+    V_accessDate(vp) = now;
     if (now - V_dayUseDate(vp) > OneDay)
 	VAdjustVolumeStatistics_r(vp);
     /*

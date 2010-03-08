@@ -12,8 +12,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/auth/ktc_nt.c,v 1.17.2.1 2004/08/25 07:09:36 shadow Exp $");
 
 #include <afs/stds.h>
 #include <stdio.h>

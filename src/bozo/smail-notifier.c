@@ -10,8 +10,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/bozo/smail-notifier.c,v 1.5 2003/07/15 23:14:43 shadow Exp $");
 
 #include <afs/stds.h>
 #include <sys/types.h>

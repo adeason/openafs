@@ -10,8 +10,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/viced/host.c,v 1.57.2.64 2009/03/19 03:45:02 shadow Exp $");
 
 #include <stdio.h>
 #include <errno.h>
@@ -852,6 +850,7 @@ h_Lookup_r(afs_uint32 haddr, afs_uint16 hport, int *heldp, struct host **hostp)
 		h_Unlock_r(host);
 		if (!*heldp)
 		    h_Release_r(host);
+		host = NULL;
 		goto restart;
 	    }
 	    h_Unlock_r(host);
@@ -1055,6 +1054,7 @@ h_Enumerate(int (*proc) (), char *param)
     register struct host *host, **list;
     register int *held;
     register int i, count;
+    int totalCount;
 
     H_LOCK;
     if (hostCount == 0) {
@@ -1071,15 +1071,23 @@ h_Enumerate(int (*proc) (), char *param)
 	ViceLog(0, ("Failed malloc in h_Enumerate\n"));
 	assert(0);
     }
-    for (count = 0, host = hostList; host; host = host->next, count++) {
-	list[count] = host;
-	if (!(held[count] = h_Held_r(host)))
-	    h_Hold_r(host);
+    for (totalCount = count = 0, host = hostList;
+         host && totalCount < hostCount;
+         host = host->next, totalCount++) {
+
+	if (!(host->hostFlags & HOSTDELETED)) {
+	    list[count] = host;
+	    if (!(held[count] = h_Held_r(host)))
+		h_Hold_r(host);
+	    count++;
+	}
     }
-    if (count != hostCount) {
-	ViceLog(0, ("h_Enumerate found %d of %d hosts\n", count, hostCount));
+    if (totalCount != hostCount) {
+	ViceLog(0, ("h_Enumerate found %d of %d hosts\n", totalCount, hostCount));
+    } else if (host != NULL) {
+	ViceLog(0, ("h_Enumerate found more than %d hosts\n", hostCount));
+	ShutDownAndCore(PANIC);
     }
-    assert(count <= hostCount);
     H_UNLOCK;
     for (i = 0; i < count; i++) {
 	held[i] = (*proc) (list[i], held[i], param);
@@ -1099,6 +1107,10 @@ h_Enumerate(int (*proc) (), char *param)
  * host with respect to this lwp is passed to (*proc) as the param held.
  * The proc should return 0 if the host should be released, 1 if it should
  * be held after enumeration.
+ *
+ * @note Assumes that hostList is only prepended to, that a host is never
+ *       inserted into the middle. Otherwise this would not be guaranteed to
+ *       terminate.
  */
 void
 h_Enumerate_r(int (*proc) (), struct host *enumstart, char *param)
@@ -1106,19 +1118,67 @@ h_Enumerate_r(int (*proc) (), struct host *enumstart, char *param)
     register struct host *host, *next;
     int held = 0;
     int nheld = 0;
+    int count;
+    int origHostCount;
 
     if (hostCount == 0) {
 	return;
     }
+
+    host = enumstart;
+    enumstart = NULL;
+
+    /* find the first non-deleted host, so we know where to actually start
+     * enumerating */
+    for (count = 0; host && count < hostCount; count++) {
+	if (!(host->hostFlags & HOSTDELETED)) {
+	    enumstart = host;
+	    break;
+	}
+	host = host->next;
+    }
+    if (!enumstart) {
+	/* we didn't find a non-deleted host... */
+
+	if (host && count >= hostCount) {
+	    /* ...because we found a loop */
+	    ViceLog(0, ("h_Enumerate_r found more than %d hosts\n", hostCount));
+	    ShutDownAndCore(PANIC);
+	}
+
+	/* ...because the hostList is full of deleted hosts */
+	return;
+    }
+
     if (enumstart && !(held = h_Held_r(enumstart)))
 	h_Hold_r(enumstart); 
-    for (host = enumstart; host; host = next, held = nheld) {
+
+    /* remember hostCount, lest it change over the potential H_LOCK drop in
+     * h_Release_r */
+    origHostCount = hostCount;
+
+    for (count = 0, host = enumstart; host && count < origHostCount; host = next, held = nheld, count++) {
 	next = host->next;
+
+	/* find the next non-deleted host */
+	while (next && (next->hostFlags & HOSTDELETED)) {
+	    next = next->next;
+	    /* inc count for the skipped-over host */
+	    if (++count > origHostCount) {
+		ViceLog(0, ("h_Enumerate_r found more than %d hosts\n", origHostCount));
+		ShutDownAndCore(PANIC);
+	    }
+	}
+
 	if (next && !(nheld = h_Held_r(next)))
 	    h_Hold_r(next);
 	held = (*proc) (host, held, param);
 	if (!held)
 	    h_Release_r(host); /* this might free up the host */
+    }
+    if (host != NULL && count >= origHostCount) {
+	ViceLog(0, ("h_Enumerate_r found more than %d hosts\n", origHostCount));
+	ShutDownAndCore(PANIC);
     }
 }				/*h_Enumerate_r */
 
@@ -1205,7 +1265,6 @@ addInterfaceAddr_r(struct host *host, afs_uint32 addr, afs_uint16 port)
 {
     int i;
     int number;
-    int found;
     struct Interface *interface;
     char hoststr[16], hoststr2[16];
 
@@ -1217,35 +1276,41 @@ addInterfaceAddr_r(struct host *host, afs_uint32 addr, afs_uint16 port)
      * for this host.
      */
     number = host->interface->numberOfInterfaces;
-    for (i = 0, found = 0; i < number && !found; i++) {
+    for (i = 0; i < number; i++) {
 	if (host->interface->interface[i].addr == addr &&
             host->interface->interface[i].port == port) {
-	    found = 1;
-            host->interface->interface[i].valid = 1;
+	    ViceLog(125, ("addInterfaceAddr : host %x (%s:%d) addr %s:%d : found, valid: %d\n",
+			  host, afs_inet_ntoa_r(host->host, hoststr), ntohs(host->port),
+			  afs_inet_ntoa_r(addr, hoststr2), ntohs(port),
+			  host->interface->interface[i].valid));
+
+	    if (host->interface->interface[i].valid == 0) {
+		hashInsert_r(addr, port, host);
+		host->interface->interface[i].valid = 1;
+	    }
+	    return 0;
         }
     }
 
-    ViceLog(125, ("addInterfaceAddr : host %x (%s:%d) addr %s:%d : found:%d\n", 
-		   host, afs_inet_ntoa_r(host->host, hoststr), ntohs(host->port), 
-		   afs_inet_ntoa_r(addr, hoststr2), ntohs(port), found));
+    ViceLog(125, ("addInterfaceAddr : host %x (%s:%d) addr %s:%d : not found, adding\n",
+		  host, afs_inet_ntoa_r(host->host, hoststr), ntohs(host->port),
+		  afs_inet_ntoa_r(addr, hoststr2), ntohs(port)));
     
-    if (!found) {
-	interface = (struct Interface *)
-	    malloc(sizeof(struct Interface) + (sizeof(struct AddrPort) * number));
-	if (!interface) {
-	    ViceLog(0, ("Failed malloc in addInterfaceAddr_r\n"));
-	    assert(0);
-	}
-	interface->numberOfInterfaces = number + 1;
-	interface->uuid = host->interface->uuid;
-	for (i = 0; i < number; i++)
-	    interface->interface[i] = host->interface->interface[i];
-	interface->interface[number].addr = addr;
-	interface->interface[number].port = port;
-        interface->interface[number].valid = 1;
-	free(host->interface);
-	host->interface = interface;
+    interface = (struct Interface *)
+	malloc(sizeof(struct Interface) + (sizeof(struct AddrPort) * number));
+    if (!interface) {
+	ViceLog(0, ("Failed malloc in addInterfaceAddr_r\n"));
+	assert(0);
     }
+    interface->numberOfInterfaces = number + 1;
+    interface->uuid = host->interface->uuid;
+    for (i = 0; i < number; i++)
+	interface->interface[i] = host->interface->interface[i];
+    interface->interface[number].addr = addr;
+    interface->interface[number].port = port;
+    interface->interface[number].valid = 1;
+    free(host->interface);
+    host->interface = interface;
 
     return 0;
 }
@@ -1334,23 +1399,6 @@ removeAddress_r(struct host *host, afs_uint32 addr, afs_uint16 port)
                        host, afs_inet_ntoa_r(host->host, hoststr), ntohs(host->port)));
             host->hostFlags |= HOSTDELETED;
         } else {
-            struct rx_connection *rxconn;
-
-            rxconn = host->callback_rxcon;
-            host->callback_rxcon = NULL;
-
-            if (rxconn) {
-                struct client *client;
-                /*
-                * If rx_DestroyConnection calls h_FreeConnection we will
-                * deadlock on the host_glock_mutex. Work around the problem
-                * by unhooking the client from the connection before
-                * destroying the connection.
-                */
-                client = rx_GetSpecific(rxconn, rxcon_client_key);
-                rx_SetSpecific(rxconn, rxcon_client_key, (void *)0);
-                rx_DestroyConnection(rxconn);
-            }
 
             for (i=0; i < host->interface->numberOfInterfaces; i++) {
                 if (host->interface->interface[i].valid) {
@@ -1372,6 +1420,25 @@ removeAddress_r(struct host *host, afs_uint32 addr, afs_uint16 port)
                            host, afs_inet_ntoa_r(host->host, hoststr), ntohs(host->port)));
                 host->hostFlags |= HOSTDELETED;
             } else {
+                struct rx_connection *rxconn;
+
+                rxconn = host->callback_rxcon;
+                host->callback_rxcon = NULL;
+
+                if (rxconn) {
+                    struct client *client;
+                    /*
+                    * If rx_DestroyConnection calls h_FreeConnection we will
+                    * deadlock on the host_glock_mutex. Work around the problem
+                    * by unhooking the client from the connection before
+                    * destroying the connection.
+                    */
+                    client = rx_GetSpecific(rxconn, rxcon_client_key);
+                    rx_SetSpecific(rxconn, rxcon_client_key, (void *)0);
+                    rx_DestroyConnection(rxconn);
+		    rxconn = NULL;
+                }
+
                 if (!sc)
                     sc = rxnull_NewClientSecurityObject();
                 host->callback_rxcon =
@@ -1405,13 +1472,13 @@ h_threadquota(int waiting)
 }
 
 /* Host is returned held */
+/* host should be released by caller if 0 == *heldp and non-null */
 struct host *
-h_GetHost_r(struct rx_connection *tcon)
+h_GetHost_r(struct rx_connection *tcon, int *heldp)
 {
     struct host *host;
     struct host *oldHost;
     int code;
-    int held;
     struct interfaceAddr interf;
     int interfValid = 0;
     struct Identity *identP = NULL;
@@ -1437,7 +1504,7 @@ h_GetHost_r(struct rx_connection *tcon)
     caps.Capabilities_len = 0;
 
     code = 0;
-    if (h_Lookup_r(haddr, hport, &held, &host))
+    if (h_Lookup_r(haddr, hport, heldp, &host))
 	return 0;
     identP = (struct Identity *)rx_GetSpecific(tcon, rxcon_ident_key);
     if (host && !identP && !(host->Console & 1)) {
@@ -1447,20 +1514,24 @@ h_GetHost_r(struct rx_connection *tcon)
 	 */
 	if ((host->hostFlags & HWHO_INPROGRESS) && 
 	    h_threadquota(host->lock.num_waiting)) {
-	    if (!held)
+	    if (!*heldp)
 		h_Release_r(host);
-	    return 0;
+	    host = NULL;
+	    goto gethost_out;
 	}
 	h_Lock_r(host);
-	if (!(host->hostFlags & ALTADDR)) {
-	    /* Another thread is doing initialization */
+	if (!(host->hostFlags & ALTADDR) ||
+            (host->hostFlags & HOSTDELETED)) {
+	    /* Another thread is doing initialization
+             * or this host was deleted while we
+             * waited for the lock. */
 	    h_Unlock_r(host);
-	    if (!held)
-		h_Release_r(host);
 	    ViceLog(125,
 		    ("Host %s:%d starting h_Lookup again\n",
 		     afs_inet_ntoa_r(host->host, hoststr),
 		     ntohs(host->port)));
+	    if (!*heldp)
+		h_Release_r(host);
 	    goto retry;
 	}
 	host->hostFlags |= HWHO_INPROGRESS;
@@ -1531,7 +1602,7 @@ h_GetHost_r(struct rx_connection *tcon)
 		    host->hostFlags &= ~HWHO_INPROGRESS;
 		    host->hostFlags |= ALTADDR;
 		    h_Unlock_r(host);
-		    if (!held)
+		    if (!*heldp)
 			h_Release_r(host);
 		    host = NULL;
 		    goto retry;
@@ -1547,7 +1618,7 @@ h_GetHost_r(struct rx_connection *tcon)
                 host->hostFlags &= ~HWHO_INPROGRESS;
 		host->hostFlags |= ALTADDR;
                 h_Unlock_r(host);
-		if (!held)
+		if (!*heldp)
 		    h_Release_r(host);
 		host = NULL;
 		goto retry;
@@ -1583,7 +1654,7 @@ h_GetHost_r(struct rx_connection *tcon)
 		host->hostFlags &= ~HWHO_INPROGRESS;
 		host->hostFlags |= ALTADDR;
 		h_Unlock_r(host);
-		if (!held)
+		if (!*heldp)
 		    h_Release_r(host);
 		host = NULL;
 		goto retry;
@@ -1617,9 +1688,13 @@ h_GetHost_r(struct rx_connection *tcon)
 			       host, 
 			       afs_inet_ntoa_r(host->host, hoststr),
 			       ntohs(host->port),code2));
-		    
-                    removeInterfaceAddr_r(host, host->host, host->port);
+		    /*
+		     * make sure we add and then remove. otherwise, we
+		     * might end up with no valid interfaces after the
+		     * remove and the host will have been marked deleted.
+		     */
                     addInterfaceAddr_r(host, haddr, hport);
+                    removeInterfaceAddr_r(host, host->host, host->port);
                     host->host = haddr;
                     host->port = hport;
                     rxconn = host->callback_rxcon;
@@ -1653,11 +1728,12 @@ h_GetHost_r(struct rx_connection *tcon)
 		host->hostFlags &= ~HWHO_INPROGRESS;
 		host->hostFlags |= ALTADDR;
 		h_Unlock_r(host);
-		if (!held)
+		if (!*heldp)
 		    h_Release_r(host);
 		host = NULL;
 		rx_DestroyConnection(cb_in);
-		return 0;
+		cb_in = NULL;
+		goto gethost_out;
 	    } else {
 		ViceLog(0,
 			("CB: WhoAreYou failed for host %x (%s:%d), error %d\n",
@@ -1683,12 +1759,12 @@ h_GetHost_r(struct rx_connection *tcon)
 		     ntohs(host->port)));
 	    h_Lock_r(host);
 	    h_Unlock_r(host);
-	    if (!held)
-		h_Release_r(host);
 	    ViceLog(125,
 		    ("Host %s:%d starting h_Lookup again\n",
 		     afs_inet_ntoa_r(host->host, hoststr),
 		     ntohs(host->port)));
+	    if (!*heldp)
+		h_Release_r(host);
 	    goto retry;
 	}
 	/* We need to check whether the identity in the host structure
@@ -1716,12 +1792,13 @@ h_GetHost_r(struct rx_connection *tcon)
             h_Lock_r(host);
 	    host->hostFlags |= HOSTDELETED;
 	    h_Unlock_r(host);
-	    if (!held)
+	    if (!*heldp)
 		h_Release_r(host);
 	    goto retry;
 	}
     } else {
 	host = h_Alloc_r(tcon);	/* returned held and locked */
+	*heldp = 0;
 	h_gethostcps_r(host, FT_ApproxTime());
 	if (!(host->Console & 1)) {
 	    int pident = 0;
@@ -1786,13 +1863,27 @@ h_GetHost_r(struct rx_connection *tcon)
 	        cb_conn=NULL;
 		H_LOCK;
 	    } else if (code == 0) {
-		oldHost = h_LookupUuid_r(&identP->uuid);
-                if (oldHost) {
-                    int probefail = 0;
+		int oldHeld = 1;
 
-		    if (!h_Held_r(oldHost))
+		oldHost = h_LookupUuid_r(&identP->uuid);
+
+                if (oldHost) {
+		    oldHeld = h_Held_r(oldHost);
+		    if (!oldHeld)
 			h_Hold_r(oldHost);
 		    h_Lock_r(oldHost);
+
+		    if (oldHost->hostFlags & HOSTDELETED) {
+			h_Unlock_r(oldHost);
+			if (!oldHeld)
+			    h_Release_r(oldHost);
+			oldHost = NULL;
+		    }
+		}
+
+		if (oldHost) {
+		    int probefail = 0;
+
 		    oldHost->hostFlags |= HWHO_INPROGRESS;
 
                     if (oldHost->interface) {
@@ -1842,6 +1933,11 @@ h_GetHost_r(struct rx_connection *tcon)
 				  ntohs(oldHost->port),
                                   afs_inet_ntoa_r(haddr, hoststr),
 				  ntohs(hport)));
+			/*
+			 * add then remove.  otherwise the host may get marked
+			 * deleted if we removed the only valid address.
+			 */
+			addInterfaceAddr_r(oldHost, haddr, hport);
 			if (probefail || oldHost->host == haddr) {
 			    /* The probe failed which means that the old address is 
 			     * either unreachable or is not the same host we were just
@@ -1868,32 +1964,21 @@ h_GetHost_r(struct rx_connection *tcon)
 				removeInterfaceAddr_r(oldHost, haddr, interface->interface[i].port);
 			    }
 			}
-			addInterfaceAddr_r(oldHost, haddr, hport);
-                        hashInsert_r(haddr, hport, oldHost);
 			oldHost->host = haddr;
 			oldHost->port = hport;
 			rxconn = oldHost->callback_rxcon;
 			oldHost->callback_rxcon = host->callback_rxcon;
-			host->callback_rxcon = NULL;
+			host->callback_rxcon = rxconn;
 			
-			if (rxconn) {
-			    struct client *client;
-			    /*
-			     * If rx_DestroyConnection calls h_FreeConnection we will
-			     * deadlock on the host_glock_mutex. Work around the problem
-			     * by unhooking the client from the connection before
-			     * destroying the connection.
-			     */
-			    client = rx_GetSpecific(rxconn, rxcon_client_key);
-			    rx_SetSpecific(rxconn, rxcon_client_key, (void *)0);
-			    rx_DestroyConnection(rxconn);
-			}
+                        /* don't destroy rxconn here; let h_TossStuff_r
+                         * take care of that via h_Release_r below */
 		    }
 		    host->hostFlags &= ~HWHO_INPROGRESS;
 		    h_Unlock_r(host);
 		    /* release host because it was allocated by h_Alloc_r */
 		    h_Release_r(host);
 		    host = oldHost;
+		    *heldp = oldHeld;
 		    /* the new host is held and locked */
 		} else {
 		    /* This really is a new host */
@@ -1938,10 +2023,16 @@ h_GetHost_r(struct rx_connection *tcon)
 	host->hostFlags &= ~HWHO_INPROGRESS;
 	h_Unlock_r(host);
     }
+
+ gethost_out:
     if (caps.Capabilities_val)
 	free(caps.Capabilities_val);
     caps.Capabilities_val = NULL;
     caps.Capabilities_len = 0;
+    if (cb_in) {
+        rx_DestroyConnection(cb_in);
+        cb_in = NULL;
+    }
     return host;
 
 }				/*h_GetHost_r */
@@ -2065,9 +2156,10 @@ h_ID2Client(afs_int32 vid)
 {
     register struct client *client;
     register struct host *host;
+    int count;
 
     H_LOCK;
-    for (host = hostList; host; host = host->next) {
+    for (count = 0, host = hostList; host && count < hostCount; host = host->next, count++) {
 	if (host->hostFlags & HOSTDELETED)
 	    continue;
 	for (client = host->FirstClient; client; client = client->next) {
@@ -2078,6 +2170,12 @@ h_ID2Client(afs_int32 vid)
 		return client;
 	    }
 	}
+    }
+    if (count != hostCount) {
+	ViceLog(0, ("h_ID2Client found %d of %d hosts\n", count, hostCount));
+    } else if (host != NULL) {
+	ViceLog(0, ("h_ID2Client found more than %d hosts\n", hostCount));
+	ShutDownAndCore(PANIC);
     }
 
     H_UNLOCK;
@@ -2113,10 +2211,13 @@ h_FindClient_r(struct rx_connection *tcon)
     char tcell[MAXKTCREALMLEN];
     int fail = 0;
     int created = 0;
+    int held = 1;
 
     client = (struct client *)rx_GetSpecific(tcon, rxcon_client_key);
     if (client && client->sid == rxr_CidOf(tcon) 
-	&& client->VenusEpoch == rxr_GetEpoch(tcon)) {
+	&& client->VenusEpoch == rxr_GetEpoch(tcon)
+	&& !(client->host->hostFlags & HOSTDELETED)) {
+
 	client->refCount++;
 	h_Hold_r(client->host);
 	if (!client->deleted && client->prfail != 2) {	
@@ -2184,10 +2285,10 @@ h_FindClient_r(struct rx_connection *tcon)
     }
 
     if (!client) { /* loop */
-	host = h_GetHost_r(tcon);	/* Returns it h_Held */
+	host = h_GetHost_r(tcon, &held);	/* Returns it h_Held */
 
 	if (!host) 
-	    return 0;
+	    return NULL;
 
     retryfirstclient:
 	/* First try to find the client structure */
@@ -2205,6 +2306,12 @@ h_FindClient_r(struct rx_connection *tcon)
 	/* Still no client structure - get one */
 	if (!client) {
 	    h_Lock_r(host);
+            if (host->hostFlags & HOSTDELETED) {
+                h_Unlock_r(host);
+		if (!held)
+                    h_Release_r(host);
+                return NULL;
+            }
 	    /* Retry to find the client structure */
 	    for (client = host->FirstClient; client; client = client->next) {
 		if (!client->deleted && (client->sid == rxr_CidOf(tcon))
@@ -2326,6 +2433,26 @@ h_FindClient_r(struct rx_connection *tcon)
     /* Avoid chaining in more than once. */
     if (created) {
 	h_Lock_r(host);
+
+        if (host->hostFlags & HOSTDELETED) {
+            h_Unlock_r(host);
+	    if (!held)
+                h_Release_r(host);
+
+            host = NULL;
+            client->host = NULL;
+
+            if ((client->ViceId != ANONYMOUSID) && client->CPS.prlist_val)
+                free(client->CPS.prlist_val);
+            client->CPS.prlist_val = NULL;
+            client->CPS.prlist_len = 0;
+
+            client->refCount--;
+            ReleaseWriteLock(&client->lock);
+            FreeCE(client);
+            return NULL;
+        }
+
 	client->next = host->FirstClient;
 	host->FirstClient = client;
 	h_Unlock_r(host);
@@ -2574,7 +2701,7 @@ h_DumpHost(register struct host *host, int held, StreamHandle_t * file)
 	sprintf(tmpStr, "%04x", host->holds[i]);
 	(void)STREAM_WRITE(tmpStr, strlen(tmpStr), 1, file);
     }
-    sprintf(tmpStr, " slot/bit: %d/%d\n", h_holdSlot(), h_holdbit());
+    sprintf(tmpStr, " slot/bit: %d/%d hostFlags:%hu\n", h_holdSlot(), h_holdbit(), host->hostFlags);
     (void)STREAM_WRITE(tmpStr, strlen(tmpStr), 1, file);
 
     H_UNLOCK;
@@ -2619,9 +2746,10 @@ h_GetWorkStats(int *nump, int *activep, int *delp, afs_int32 cutofftime)
 {
     register struct host *host;
     register int num = 0, active = 0, del = 0;
+    int count;
 
     H_LOCK;
-    for (host = hostList; host; host = host->next) {
+    for (count = 0, host = hostList; host && count < hostCount; host = host->next, count++) {
 	if (!(host->hostFlags & HOSTDELETED)) {
 	    num++;
 	    if (host->ActiveCall > cutofftime)
@@ -2629,6 +2757,12 @@ h_GetWorkStats(int *nump, int *activep, int *delp, afs_int32 cutofftime)
 	    if (host->hostFlags & VENUSDOWN)
 		del++;
 	}
+    }
+    if (count != hostCount) {
+	ViceLog(0, ("h_GetWorkStats found %d of %d hosts\n", count, hostCount));
+    } else if (host != NULL) {
+	ViceLog(0, ("h_GetWorkStats found more than %d hosts\n", hostCount));
+	ShutDownAndCore(PANIC);
     }
     H_UNLOCK;
     if (nump)
@@ -2784,6 +2918,7 @@ h_GetHostNetStats(afs_int32 * a_numHostsP, afs_int32 * a_sameNetOrSubnetP,
 
     register struct host *hostP;	/*Ptr to current host entry */
     register afs_uint32 currAddr_HBO;	/*Curr host addr, host byte order */
+    int count;
 
     /*
      * Clear out the storage pointed to by our parameters.
@@ -2794,7 +2929,7 @@ h_GetHostNetStats(afs_int32 * a_numHostsP, afs_int32 * a_sameNetOrSubnetP,
     *a_diffNetworkP = (afs_int32) 0;
 
     H_LOCK;
-    for (hostP = hostList; hostP; hostP = hostP->next) {
+    for (count = 0, hostP = hostList; hostP && count < hostCount; hostP = hostP->next, count++) {
 	if (!(hostP->hostFlags & HOSTDELETED)) {
 	    /*
 	     * Bump the number of undeleted host entries found.
@@ -2808,6 +2943,12 @@ h_GetHostNetStats(afs_int32 * a_numHostsP, afs_int32 * a_sameNetOrSubnetP,
 			      a_diffNetworkP);
 	}			/*Only look at non-deleted hosts */
     }				/*For each host record hashed to this index */
+    if (count != hostCount) {
+	ViceLog(0, ("h_GetHostNetStats found %d of %d hosts\n", count, hostCount));
+    } else if (hostP != NULL) {
+	ViceLog(0, ("h_GetHostNetStats found more than %d hosts\n", hostCount));
+	ShutDownAndCore(PANIC);
+    }
     H_UNLOCK;
 }				/*h_GetHostNetStats */
 
@@ -2838,8 +2979,8 @@ CheckHost(register struct host *host, int held)
     }
     if (host->LastCall < checktime) {
 	h_Lock_r(host);
-	host->hostFlags |= HWHO_INPROGRESS;
 	if (!(host->hostFlags & HOSTDELETED)) {
+            host->hostFlags |= HWHO_INPROGRESS;
 	    cb_conn = host->callback_rxcon;
 	    rx_GetConnection(cb_conn);
 	    if (host->LastCall < clientdeletetime) {
@@ -2907,8 +3048,8 @@ CheckHost(register struct host *host, int held)
 	    rx_PutConnection(cb_conn);
 	    cb_conn=NULL;
 	    H_LOCK;
+            host->hostFlags &= ~HWHO_INPROGRESS;
 	}
-	host->hostFlags &= ~HWHO_INPROGRESS;
 	h_Unlock_r(host);
     }
     H_UNLOCK;

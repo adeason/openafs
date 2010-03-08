@@ -16,8 +16,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/vol/purge.c,v 1.9.2.4 2008/08/16 19:15:49 shadow Exp $");
 
 #include <stdio.h>
 #ifdef AFS_NT40_ENV

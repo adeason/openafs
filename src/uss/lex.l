@@ -11,9 +11,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID("$Header: /cvs/openafs/src/uss/lex.l,v 1.1.2.3 2007/12/10 18:24:15 shadow Exp $");
-
-
 #include <string.h>
 
 #include "y.tab.h"

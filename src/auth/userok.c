@@ -10,8 +10,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/auth/userok.c,v 1.12.2.4 2009/03/19 03:44:59 shadow Exp $");
 
 #include <afs/stds.h>
 #include <afs/pthread_glock.h>

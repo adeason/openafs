@@ -19,8 +19,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/viced/viced.c,v 1.58.2.36 2009/03/25 13:07:27 shadow Exp $");
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -174,6 +172,12 @@ int hostaclRefresh = 7200;	/* refresh host clients' acls every 2 hrs */
 int SawLock;
 #endif
 time_t StartTime;
+
+/**
+ * seconds to wait until forcing a panic during ShutDownAndCore(PANIC)
+ * in case we get stuck.
+ */
+static int panic_timeout = 30 * 60;
 
 int rxpackets = 150;		/* 100 */
 int nSmallVns = 400;		/* 200 */
@@ -641,11 +645,35 @@ CheckSignal(void *unused)
     return NULL;
 }				/*CheckSignal */
 
+static void *
+ShutdownWatchdogLWP(void *unused)
+{
+    sleep(panic_timeout);
+    ViceLog(0, ("ShutdownWatchdogLWP: Failed to shutdown and panic "
+                "within %d seconds; forcing panic\n", panic_timeout));
+    assert(0);
+    return NULL;
+}
+
 void
 ShutDownAndCore(int dopanic)
 {
     time_t now = time(0);
     char tbuffer[32];
+
+    if (dopanic) {
+#ifdef AFS_PTHREAD_ENV
+	pthread_t watchdogPid;
+	pthread_attr_t tattr;
+	assert(pthread_attr_init(&tattr) == 0);
+	assert(pthread_create(&watchdogPid, &tattr, ShutdownWatchdogLWP, NULL) == 0);
+#else
+	PROCESS watchdogPid;
+	assert(LWP_CreateProcess
+	       (ShutdownWatchdogLWP, stack * 1024, LWP_MAX_PRIORITY - 2,
+	        NULL, "ShutdownWatchdog", &watchdogPid) == LWP_SUCCESS);
+#endif
+    }
 
     ViceLog(0,
 	    ("Shutting down file server at %s",
@@ -1551,6 +1579,7 @@ Do_VLRegisterRPC()
 	    ViceLog(0,
 		    ("VL_RegisterAddrs rpc failed; will retry periodically (code=%d, err=%d)\n",
 		     code, errno));
+	    FS_registered = 1;	/* Retry in the gc daemon */
 	}
     } else {
 	FS_registered = 2;	/* So we don't have to retry in the gc daemon */
@@ -1897,13 +1926,13 @@ main(int argc, char *argv[])
     ClearXStatValues();
 
     code = InitVL();
-    if (code) {
+    if (code && code != VL_MULTIPADDR) {
 	ViceLog(0, ("Fatal error in library initialization, exiting!!\n"));
 	exit(1);
     }
 
     code = InitPR();
-    if (code) {
+    if (code && code != -1) {
 	ViceLog(0, ("Fatal error in protection initialization, exiting!!\n"));
 	exit(1);
     }

@@ -10,8 +10,6 @@
 #include <afsconfig.h>
 #include "afs/param.h"
 
-RCSID
-    ("$Header: /cvs/openafs/src/afs/LINUX/osi_file.c,v 1.19.2.20 2009/06/22 15:25:43 shadow Exp $");
 
 #ifdef AFS_LINUX24_ENV
 #include "h/module.h" /* early to avoid printf->printk mapping */
@@ -32,6 +30,9 @@ extern struct osi_dev cacheDev;
 extern struct vfsmount *afs_cacheMnt;
 #endif
 extern struct super_block *afs_cacheSBp;
+#if defined(STRUCT_TASK_HAS_CRED)
+extern struct cred *cache_creds;
+#endif
 
 #if defined(AFS_LINUX26_ENV) 
 void *
@@ -79,7 +80,10 @@ osi_UFSOpen(afs_int32 ainode)
     tip->i_flags |= MS_NOATIME;	/* Disable updating access times. */
 
 #if defined(STRUCT_TASK_HAS_CRED)
-    filp = dentry_open(dp, mntget(afs_cacheMnt), O_RDWR, current_cred());
+    /* Use stashed credentials - prevent selinux/apparmor problems  */
+    filp = dentry_open(dp, mntget(afs_cacheMnt), O_RDWR, cache_creds);
+    if (IS_ERR(filp))
+	filp = dentry_open(dp, mntget(afs_cacheMnt), O_RDWR, current_cred());
 #else
     filp = dentry_open(dp, mntget(afs_cacheMnt), O_RDWR);
 #endif
@@ -216,13 +220,13 @@ osi_UFSTruncate(register struct osi_file *afile, afs_int32 asize)
 	return code;
     MObtainWriteLock(&afs_xosi, 321);
     AFS_GUNLOCK();
-#ifdef STRUCT_INODE_HAS_I_ALLOC_SEM
-    down_write(&inode->i_alloc_sem);
-#endif
 #ifdef STRUCT_INODE_HAS_I_MUTEX
     mutex_lock(&inode->i_mutex);
 #else
     down(&inode->i_sem);
+#endif
+#ifdef STRUCT_INODE_HAS_I_ALLOC_SEM
+    down_write(&inode->i_alloc_sem);
 #endif
     newattrs.ia_size = asize;
     newattrs.ia_valid = ATTR_SIZE | ATTR_CTIME;
@@ -258,13 +262,13 @@ osi_UFSTruncate(register struct osi_file *afile, afs_int32 asize)
     }
 #endif
     code = -code;
+#ifdef STRUCT_INODE_HAS_I_ALLOC_SEM
+    up_write(&inode->i_alloc_sem);
+#endif
 #ifdef STRUCT_INODE_HAS_I_MUTEX
     mutex_unlock(&inode->i_mutex);
 #else
     up(&inode->i_sem);
-#endif
-#ifdef STRUCT_INODE_HAS_I_ALLOC_SEM
-    up_write(&inode->i_alloc_sem);
 #endif
     AFS_GLOCK();
     MReleaseWriteLock(&afs_xosi);

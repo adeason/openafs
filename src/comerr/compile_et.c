@@ -12,8 +12,6 @@
 #include <afs/param.h>
 #include <afs/afsutil.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/comerr/compile_et.c,v 1.14.2.1 2007/04/10 18:43:42 shadow Exp $");
 
 #include <stdio.h>
 #include <stdlib.h>

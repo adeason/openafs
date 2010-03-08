@@ -10,8 +10,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/butc/recoverDb.c,v 1.10.2.7 2008/03/10 22:35:34 shadow Exp $");
 
 #include <stdio.h>
 #ifdef AFS_NT40_ENV

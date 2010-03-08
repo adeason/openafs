@@ -10,8 +10,6 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
-RCSID
-    ("$Header: /cvs/openafs/src/venus/kdump.c,v 1.33.2.10 2009/06/24 21:30:20 shadow Exp $");
 
 #include <stdio.h>
 #include <errno.h>
