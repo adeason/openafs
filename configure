@@ -2230,7 +2230,7 @@ fi
 
 # Define the identity of the package.
  PACKAGE=openafs
- VERSION=1.4.12pre4
+ VERSION=1.4.12
 
 
 cat >>confdefs.h <<_ACEOF
@@ -2378,10 +2378,10 @@ am__tar='${AMTAR} chof - "$$tardir"'; am__untar='${AMTAR} xf -'
 
 ac_config_headers="$ac_config_headers src/config/afsconfig.h"
 
-MACOS_VERSION=1.4.12fc4
+MACOS_VERSION=1.4.12
 LINUX_PKGVER=1.4.12
-LINUX_PKGREL=0.pre4
-#LINUX_PKGREL=1.1
+LINUX_PKGREL=1.1
+#LINUX_PKGREL=0.pre3
 
 
 
@@ -8883,6 +8883,115 @@ echo "${ECHO_T}$ac_cv_linux_struct_super_block_has_s_bdi" >&6; }
 
 cat >>confdefs.h <<\_ACEOF
 #define STRUCT_SUPER_BLOCK_HAS_S_BDI 1
+_ACEOF
+
+  fi
+
+  { echo "$as_me:$LINENO: checking if struct backing_dev_info has name" >&5
+echo $ECHO_N "checking if struct backing_dev_info has name... $ECHO_C" >&6; }
+  if test "${ac_cv_linux_struct_bdi_has_name+set}" = set; then
+  echo $ECHO_N "(cached) $ECHO_C" >&6
+else
+
+
+  if test $AFS_SYSKVERS -ge 26 ; then
+      rm -fr conftest.dir
+  if test "x$ac_linux_kbuild_requires_extra_cflags" = "xyes" ; then
+    CFLAGS_PREFIX='EXTRA_'
+  fi
+  if mkdir conftest.dir &&
+    cat >conftest.dir/Makefile <<_ACEOF &&
+${CFLAGS_PREFIX}CFLAGS += $CPPFLAGS
+
+obj-m += conftest.o
+_ACEOF
+    cat >conftest.dir/conftest.c <<\_ACEOF &&
+/* confdefs.h */
+_ACEOF
+    cat confdefs.h >>conftest.dir/conftest.c &&
+    cat >>conftest.dir/conftest.c <<\_ACEOF &&
+/* end confdefs.h */
+#include <linux/module.h>
+#include <linux/backing-dev.h>
+
+void conftest(void)
+{
+struct backing_dev_info _bdi;
+_bdi.name = NULL;
+}
+
+MODULE_LICENSE("http://www.openafs.org/dl/license10.html");
+_ACEOF
+    echo make -C $LINUX_KERNEL_BUILD M=$SRCDIR_PARENT/conftest.dir modules KBUILD_VERBOSE=1 >&5 &&
+    make -C $LINUX_KERNEL_BUILD M=$SRCDIR_PARENT/conftest.dir modules KBUILD_VERBOSE=1 >&5 2>conftest.err &&
+    ! grep -i "WARNING: .* undefined!$" conftest.err >/dev/null 2>&1
+    then ac_cv_linux_struct_bdi_has_name=yes
+    else
+      sed '/^ *+/d' conftest.err >&5
+      echo "$as_me: failed using Makefile:" >&5
+      sed 's/^/| /' conftest.dir/Makefile >&5
+      echo "$as_me: and program was:" >&5
+      sed 's/^/| /' conftest.dir/conftest.c >&5
+      ac_cv_linux_struct_bdi_has_name=no
+  fi; rm -fr conftest.err conftest.dir
+  else
+
+  ac_save_CPPFLAGS="$CPPFLAGS"
+  CPPFLAGS="-I$LINUX_KERNEL_PATH/include -D__KERNEL__ -Werror-implicit-function-declaration $CPPFLAGS"
+  cat >conftest.$ac_ext <<_ACEOF
+/* confdefs.h.  */
+_ACEOF
+cat confdefs.h >>conftest.$ac_ext
+cat >>conftest.$ac_ext <<_ACEOF
+/* end confdefs.h.  */
+
+#include <linux/kernel.h>
+#include <linux/backing-dev.h>
+int
+main ()
+{
+struct backing_dev_info _bdi;
+_bdi.name = NULL;
+  ;
+  return 0;
+}
+_ACEOF
+rm -f conftest.$ac_objext
+if { (ac_try="$ac_compile"
+case "(($ac_try" in
+  *\"* | *\`* | *\\*) ac_try_echo=\$ac_try;;
+  *) ac_try_echo=$ac_try;;
+esac
+eval "echo \"\$as_me:$LINENO: $ac_try_echo\"") >&5
+  (eval "$ac_compile") 2>conftest.er1
+  ac_status=$?
+  grep -v '^ *+' conftest.er1 >conftest.err
+  rm -f conftest.er1
+  cat conftest.err >&5
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); } && {
+	 test -z "$ac_c_werror_flag" ||
+	 test ! -s conftest.err
+       } && test -s conftest.$ac_objext; then
+  ac_cv_linux_struct_bdi_has_name=yes
+else
+  echo "$as_me: failed program was:" >&5
+sed 's/^/| /' conftest.$ac_ext >&5
+
+	ac_cv_linux_struct_bdi_has_name=no
+fi
+
+rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
+  CPPFLAGS="$ac_save_CPPFLAGS"
+  fi
+fi
+
+  { echo "$as_me:$LINENO: result: $ac_cv_linux_struct_bdi_has_name" >&5
+echo "${ECHO_T}$ac_cv_linux_struct_bdi_has_name" >&6; }
+  if test "x$ac_cv_linux_struct_bdi_has_name" = "xyes"; then
+
+cat >>confdefs.h <<\_ACEOF
+#define STRUCT_BDI_HAS_NAME 1
 _ACEOF
 
   fi
