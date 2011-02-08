@@ -447,8 +447,10 @@ afs_linux_release(struct inode *ip, struct file *fp)
 }
 
 static int
-#if defined(AFS_LINUX24_ENV)
+#if defined(AFS_LINUX24_ENV) && defined(FOP_FSYNC_TAKES_DENTRY)
 afs_linux_fsync(struct file *fp, struct dentry *dp, int datasync)
+#elif defined(AFS_LINUX24_ENV)
+afs_linux_fsync(struct file *fp, int datasync)
 #else
 afs_linux_fsync(struct file *fp, struct dentry *dp)
 #endif
@@ -507,7 +509,7 @@ afs_linux_lock(struct file *fp, int cmd, struct file_lock *flp)
 #endif /* F_GETLK64 && F_GETLK != F_GETLK64 */
 
     AFS_GLOCK();
-    code = afs_lockctl(vcp, &flock, cmd, credp);
+    code = afs_convert_code(afs_lockctl(vcp, &flock, cmd, credp));
     AFS_GUNLOCK();
 
 #ifdef AFS_LINUX24_ENV
@@ -567,7 +569,7 @@ afs_linux_lock(struct file *fp, int cmd, struct file_lock *flp)
 	flp->fl_end = flock.l_start + flock.l_len - 1;
 
     crfree(credp);
-    return afs_convert_code(code);
+    return code;
 }
 
 #ifdef STRUCT_FILE_OPERATIONS_HAS_FLOCK
@@ -698,6 +700,7 @@ struct file_operations afs_dir_fops = {
 #endif
   .open =	afs_linux_open,
   .release =	afs_linux_release,
+  .llseek =	default_llseek,
 };
 
 struct file_operations afs_file_fops = {
@@ -731,6 +734,7 @@ struct file_operations afs_file_fops = {
 #ifdef STRUCT_FILE_OPERATIONS_HAS_FLOCK
   .flock =	afs_linux_flock,
 #endif
+  .llseek = 	default_llseek,
 };
 
 

@@ -100,6 +100,9 @@
 /* define if your fops.flush takes an fl_owner_t argument */
 #undef FOP_FLUSH_TAKES_FL_OWNER_T
 
+/* define if your fops.fsync takes an dentry argument */
+#undef FOP_FSYNC_TAKES_DENTRY
+
 /* define if you have linux/freezer.h */
 #undef FREEZER_H_EXISTS
 
@@ -244,6 +247,9 @@
 
 /* define if krb5_prompt has type */
 #undef HAVE_KRB5_PROMPT_TYPE
+
+/* define if your kernel has inode_setattr() */
+#undef HAVE_LINUX_INODE_SETATTR
 
 /* define if your kernel has i_size_read() */
 #undef HAVE_LINUX_I_SIZE_READ
@@ -733,6 +739,9 @@
 
 /* define if your struct super_operations has alloc_inode */
 #undef STRUCT_SUPER_HAS_ALLOC_INODE
+
+/* define if your struct super_operations has evict_inode */
+#undef STRUCT_SUPER_OPERATIONS_HAS_EVICT_INODE
 
 /* define if struct task has a cred pointer */
 #undef STRUCT_TASK_HAS_CRED

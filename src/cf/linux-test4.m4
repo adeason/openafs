@@ -467,6 +467,18 @@ printk("%p\n", _super.alloc_inode);],
   AC_MSG_RESULT($ac_cv_linux_fs_struct_super_has_alloc_inode)])
 
 
+AC_DEFUN([LINUX_FS_STRUCT_SUPER_HAS_EVICT_INODE], [
+  AC_MSG_CHECKING([for evict_inode in struct super_operations])
+  AC_CACHE_VAL([ac_cv_linux_fs_struct_super_has_evict_inode], [
+    AC_TRY_KBUILD(
+[#include <linux/fs.h>],
+[struct super_operations _super;
+printk("%p\n", _super.evict_inode);],
+      ac_cv_linux_fs_struct_super_has_evict_inode=yes,
+      ac_cv_linux_fs_struct_super_has_evict_inode=no)])
+  AC_MSG_RESULT($ac_cv_linux_fs_struct_super_has_evict_inode)])
+
+
 AC_DEFUN([LINUX_KERNEL_POSIX_LOCK_FILE_WAIT_ARG], [
   AC_MSG_CHECKING([for 3rd argument in posix_lock_file found in new kernels])
   AC_CACHE_VAL([ac_cv_linux_kernel_posix_lock_file_wait_arg], [
@@ -722,9 +734,7 @@ AC_DEFUN([LINUX_STATFS_TAKES_DENTRY], [
     AC_TRY_KBUILD(
 [#include <linux/fs.h>
 #include <linux/statfs.h>],
-[
-extern int vfs_statfs(struct dentry *, struct kstatfs *);
-],
+[extern int simple_statfs(struct dentry *, struct kstatfs *);],
       ac_cv_linux_statfs_takes_dentry=yes,
       ac_cv_linux_statfs_takes_dentry=no)])
   AC_MSG_RESULT($ac_cv_linux_statfs_takes_dentry)])
@@ -928,6 +938,23 @@ fl_owner_t id;
       ac_cv_linux_func_f_flush_takes_fl_owner_t=yes,
       ac_cv_linux_func_f_flush_takes_fl_owner_t=no)])
   AC_MSG_RESULT($ac_cv_linux_func_f_flush_takes_fl_owner_t)])
+
+AC_DEFUN([LINUX_FOP_F_FSYNC_TAKES_DENTRY], [
+  AC_MSG_CHECKING([whether file_operations.fsync takes a dentry argument])
+  AC_CACHE_VAL([ac_cv_linux_func_f_fsync_takes_dentry], [
+    AC_TRY_KBUILD(
+[#include <linux/fs.h>],
+[struct inode _inode;
+struct file _file;
+struct dentry _d;
+(void)_inode.i_fop->fsync(&_file, &_d, 0);],
+      ac_cv_linux_func_f_fsync_takes_dentry=yes,
+      ac_cv_linux_func_f_fsync_takes_dentry=no)])
+  AC_MSG_RESULT($ac_cv_linux_func_f_fsync_takes_dentry)
+  if test "x$ac_cv_linux_func_f_fsync_takes_dentry" = "xyes"; then
+    AC_DEFINE([FOP_FSYNC_TAKES_DENTRY], 1, [define if your fops.fsync takes an dentry argument])
+  fi
+])
 
 AC_DEFUN([LINUX_HAVE_KMEM_CACHE_T], [
   AC_MSG_CHECKING([whether kmem_cache_t exists])
@@ -1260,4 +1287,20 @@ _bdi.name = NULL;],
   AC_MSG_RESULT($ac_cv_linux_struct_bdi_has_name)
   if test "x$ac_cv_linux_struct_bdi_has_name" = "xyes"; then
     AC_DEFINE([STRUCT_BDI_HAS_NAME], 1, [define if struct backing_dev_info has a name member])
+  fi])
+
+AC_DEFUN([LINUX_HAVE_INODE_SETATTR], [
+  AC_MSG_CHECKING([for linux inode_setattr()])
+  AC_CACHE_VAL([ac_cv_linux_inode_setattr], [
+    save_CPPFLAGS="$CPPFLAGS"
+    CPPFLAGS="$CPPFLAGS -Werror-implicit-function-declaration"
+    AC_TRY_KBUILD(
+[#include <linux/fs.h>],
+[inode_setattr(NULL);],
+      ac_cv_linux_inode_setattr=yes,
+      ac_cv_linux_inode_setattr=no)
+    CPPFLAGS="$save_CPPFLAGS"])
+  AC_MSG_RESULT($ac_cv_linux_inode_setattr)
+  if test "x$ac_cv_linux_inode_setattr" = "xyes"; then
+    AC_DEFINE([HAVE_LINUX_INODE_SETATTR], 1, [define if your kernel has inode_setattr()])
   fi])

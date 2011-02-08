@@ -747,6 +747,7 @@ case $AFS_SYSNAME in *_linux* | *_umlinux*)
 		 LINUX_DEFINES_FOR_EACH_PROCESS
 		 LINUX_DEFINES_PREV_TASK
 		 LINUX_FS_STRUCT_SUPER_HAS_ALLOC_INODE
+		 LINUX_FS_STRUCT_SUPER_HAS_EVICT_INODE
 		 LINUX_FS_STRUCT_SUPER_BLOCK_HAS_S_BDI
 		 LINUX_STRUCT_BDI_HAS_NAME
 	         LINUX_FS_STRUCT_ADDRESS_SPACE_HAS_PAGE_LOCK
@@ -771,6 +772,7 @@ case $AFS_SYSNAME in *_linux* | *_umlinux*)
 	  	 LINUX_IOP_I_PUT_LINK_TAKES_COOKIE
 	  	 LINUX_DOP_D_REVALIDATE_TAKES_NAMEIDATA
 	  	 LINUX_FOP_F_FLUSH_TAKES_FL_OWNER_T
+		 LINUX_FOP_F_FSYNC_TAKES_DENTRY
 	  	 LINUX_AOP_WRITEBACK_CONTROL
 		 LINUX_FS_STRUCT_FOP_HAS_FLOCK
 		 LINUX_FS_STRUCT_FOP_HAS_SENDFILE
@@ -817,6 +819,7 @@ case $AFS_SYSNAME in *_linux* | *_umlinux*)
 		 LINUX_STRUCT_CTL_TABLE_HAS_CTL_NAME
 		 LINUX_HAVE_IGET
 		 LINUX_HAVE_I_SIZE_READ
+		 LINUX_HAVE_INODE_SETATTR
 		 LINUX_FS_STRUCT_NAMEIDATA_HAS_PATH
 	         LINUX_EXPORTS_INIT_MM
                  LINUX_EXPORTS_SYS_CHDIR
@@ -909,6 +912,9 @@ case $AFS_SYSNAME in *_linux* | *_umlinux*)
 		 fi
 		 if test "x$ac_cv_linux_fs_struct_super_has_alloc_inode" = "xyes" ; then
 		  AC_DEFINE(STRUCT_SUPER_HAS_ALLOC_INODE, 1, [define if your struct super_operations has alloc_inode])
+		 fi
+		 if test "x$ac_cv_linux_fs_struct_super_has_evict_inode" = "xyes" ; then
+		  AC_DEFINE(STRUCT_SUPER_OPERATIONS_HAS_EVICT_INODE, 1, [define if your struct super_operations has evict_inode])
 		 fi
 		 if test "x$ac_cv_linux_fs_struct_address_space_has_page_lock" = "xyes"; then 
 		  AC_DEFINE(STRUCT_ADDRESS_SPACE_HAS_PAGE_LOCK, 1, [define if your struct address_space has page_lock])
