@@ -71,6 +71,7 @@ AC_CONFIG_FILES([
     src/finale/Makefile
     src/fsint/Makefile
     src/fsprobe/Makefile
+    src/gklog/Makefile
     src/gtx/Makefile
     src/kauth/Makefile
     src/kauth/test/Makefile
