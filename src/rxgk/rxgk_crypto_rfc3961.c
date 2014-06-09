@@ -855,3 +855,32 @@ rxgk_enctype_better(afs_int32 old_enctype, afs_int32 new_enctype)
     }
     return 0;
 }
+
+/**
+ * Get the list of default enctypes
+ *
+ * @param[out] enctypes	The enctypes to use by default. The array is allocated
+ *			via xdr_alloc, and must be freed by the caller.
+ * @return rx error codes
+ */
+afs_int32
+rxgk_default_enctypes(RXGK_Enctypes *enctypes)
+{
+    static const int etypes[] = {
+	ETYPE_AES128_CTS_HMAC_SHA1_96,
+	ETYPE_AES256_CTS_HMAC_SHA1_96
+    };
+    static const int n_etypes = sizeof(etypes)/sizeof(etypes[0]);
+
+    int etype_i;
+
+    enctypes->val = xdr_alloc(n_etypes * sizeof(enctypes->val[0]));
+    if (enctypes->val == NULL)
+	return RXGK_INCONSISTENCY;
+    enctypes->len = n_etypes;
+
+    for (etype_i = 0; etype_i < n_etypes; etype_i++) {
+	enctypes->val[etype_i] = etypes[etype_i];
+    }
+    return 0;
+}
