@@ -1432,20 +1432,16 @@ CountFDs(int amax)
 
 #if !defined(KERNEL) || defined(UKERNEL)
 
-/* This function reads a single packet from the interface into the
- * supplied packet buffer (*p).  Return 0 if the packet is bogus.  The
- * (host,port) of the sender are stored in the supplied variables, and
- * the data length of the packet is stored in the packet structure.
- * The header is decoded. */
-int
-rxi_ReadPacket(osi_socket socket, struct rx_packet *p, afs_uint32 * host,
-	       u_short * port)
+static int rxi_DecodePacket(struct rx_packet *p, struct sockaddr_in *from,
+                            afs_uint32 *host, u_short *port, afs_uint32 tlen,
+                            int nbytes);
+static void
+rxi_PrepareRecvMsg(struct msghdr *msg, struct rx_packet *p,
+                   struct sockaddr_in *from, afs_uint32 *a_tlen,
+                   afs_uint32 *a_savelen)
 {
-    struct sockaddr_in from;
-    int nbytes;
     afs_int32 rlen;
-    afs_uint32 tlen, savelen;
-    struct msghdr msg;
+    afs_uint32 tlen;
     rx_computelen(p, tlen);
     rx_SetDataSize(p, tlen);	/* this is the size of the user data area */
 
@@ -1462,24 +1458,55 @@ rxi_ReadPacket(osi_socket socket, struct rx_packet *p, afs_uint32 * host,
     } else
 	tlen = rlen;
 
+    /* 'tlen' is now the max size of the packet we expect to receive. This is
+     * normally rx_maxJumboRecvSize, but may be a bit less if rxi_AllocDataBuf
+     * was unable to allocate all of the bytes requested. */
+
     /* Extend the last iovec for padding, it's just to make sure that the
      * read doesn't return more data than we expect, and is done to get around
      * our problems caused by the lack of a length field in the rx header.
      * Use the extra buffer that follows the localdata in each packet
      * structure. */
-    savelen = p->wirevec[p->niovecs - 1].iov_len;
+    *a_savelen = p->wirevec[p->niovecs - 1].iov_len;
     p->wirevec[p->niovecs - 1].iov_len += RX_EXTRABUFFERSIZE;
 
+    msg->msg_name = from;
+    msg->msg_namelen = sizeof(*from);
+    msg->msg_iov = p->wirevec;
+    msg->msg_iovlen = p->niovecs;
+
+    *a_tlen = tlen;
+}
+
+/* This function reads a single packet from the interface into the
+ * supplied packet buffer (*p).  Return 0 if the packet is bogus.  The
+ * (host,port) of the sender are stored in the supplied variables, and
+ * the data length of the packet is stored in the packet structure.
+ * The header is decoded. */
+int
+rxi_ReadPacket(osi_socket socket, struct rx_packet *p, afs_uint32 * host,
+	       u_short * port)
+{
+    int nbytes;
+    struct msghdr msg;
+    struct sockaddr_in from;
+    afs_uint32 tlen, savelen;
+
     memset(&msg, 0, sizeof(msg));
-    msg.msg_name = (char *)&from;
-    msg.msg_namelen = sizeof(struct sockaddr_in);
-    msg.msg_iov = p->wirevec;
-    msg.msg_iovlen = p->niovecs;
+    rxi_PrepareRecvMsg(&msg, p, &from, &tlen, &savelen);
+
     nbytes = rxi_Recvmsg(socket, &msg, 0);
 
     /* restore the vec to its correct state */
     p->wirevec[p->niovecs - 1].iov_len = savelen;
 
+    return rxi_DecodePacket(p, &from, host, port, tlen, nbytes);
+}
+
+static int
+rxi_DecodePacket(struct rx_packet *p, struct sockaddr_in *from,
+                 afs_uint32 *host, u_short *port, afs_uint32 tlen, int nbytes)
+{
     p->length = (u_short)(nbytes - RX_HEADER_SIZE);
     if (nbytes < 0 || (nbytes > tlen) || (p->length & 0x8000)) { /* Bogus packet */
 	if (nbytes < 0 && errno == EWOULDBLOCK) {
@@ -1488,10 +1515,10 @@ rxi_ReadPacket(osi_socket socket, struct rx_packet *p, afs_uint32 * host,
 	} else if (nbytes <= 0) {
             if (rx_stats_active) {
                 rx_atomic_inc(&rx_stats.bogusPacketOnRead);
-                rx_stats.bogusHost = from.sin_addr.s_addr;
+                rx_stats.bogusHost = from->sin_addr.s_addr;
             }
-	    dpf(("B: bogus packet from [%x,%d] nb=%d\n", ntohl(from.sin_addr.s_addr),
-		 ntohs(from.sin_port), nbytes));
+	    dpf(("B: bogus packet from [%x,%d] nb=%d\n", ntohl(from->sin_addr.s_addr),
+		 ntohs(from->sin_port), nbytes));
 	}
 	return 0;
     }
@@ -1500,8 +1527,8 @@ rxi_ReadPacket(osi_socket socket, struct rx_packet *p, afs_uint32 * host,
 		&& (random() % 100 < rx_intentionallyDroppedOnReadPer100)) {
 	rxi_DecodePacketHeader(p);
 
-	*host = from.sin_addr.s_addr;
-	*port = from.sin_port;
+	*host = from->sin_addr.s_addr;
+	*port = from->sin_port;
 
 	dpf(("Dropped %d %s: %x.%u.%u.%u.%u.%u.%u flags %d len %d\n",
 	      p->header.serial, rx_packetTypes[p->header.type - 1], ntohl(*host), ntohs(*port), p->header.serial,
@@ -1517,8 +1544,8 @@ rxi_ReadPacket(osi_socket socket, struct rx_packet *p, afs_uint32 * host,
 	/* Extract packet header. */
 	rxi_DecodePacketHeader(p);
 
-	*host = from.sin_addr.s_addr;
-	*port = from.sin_port;
+	*host = from->sin_addr.s_addr;
+	*port = from->sin_port;
 	if (rx_stats_active
 	    && p->header.type > 0 && p->header.type < RX_N_PACKET_TYPES) {
 
