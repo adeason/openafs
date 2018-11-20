@@ -584,6 +584,37 @@ rx_ReadvProc(struct rx_call *call, struct iovec *iov, int *nio, int maxio,
     return bytes;
 }
 
+/* Is our transmit queue too big, and the calling writer should wait before
+ * adding more to the queue? */
+static_inline int
+rxi_TransmitQueueIsTooFull(struct rx_call *call)
+{
+    if (call->tnext + 1 > call->tfirst + (2 * call->twind)) {
+        return 1;
+    }
+    return 0;
+}
+
+/* Wait for the transmit window on 'call' to advance until the transmit queue
+ * has been reduced to a more reasonable size. */
+static void
+rxi_WaitForTransmitWindow(struct rx_call *call)
+{
+    while (!call->error && rxi_TransmitQueueIsTooFull(call)) {
+        clock_NewTime();
+        call->startWait = clock_Sec();
+
+#ifdef	RX_ENABLE_LOCKS
+        CV_WAIT(&call->cv_twind, &call->lock);
+#else
+        call->flags |= RX_CALL_WAIT_WINDOW_ALLOC;
+        osi_rxSleep(&call->twind);
+#endif
+
+        call->startWait = 0;
+    }
+}
+
 /* rxi_WriteProc -- internal version.
  *
  * LOCKS USED -- called at netpri
@@ -669,27 +700,14 @@ rxi_WriteProc(struct rx_call *call, char *buf,
 		call->app.currentPacket = NULL;
 	    }
 	    /* Wait for transmit window to open up */
-	    while (!call->error
-		   && call->tnext + 1 > call->tfirst + (2 * call->twind)) {
-		clock_NewTime();
-		call->startWait = clock_Sec();
-
-#ifdef	RX_ENABLE_LOCKS
-		CV_WAIT(&call->cv_twind, &call->lock);
-#else
-		call->flags |= RX_CALL_WAIT_WINDOW_ALLOC;
-		osi_rxSleep(&call->twind);
-#endif
-
-		call->startWait = 0;
+            rxi_WaitForTransmitWindow(call);
 #ifdef RX_ENABLE_LOCKS
-		if (call->error) {
-                    call->app.mode = RX_MODE_ERROR;
-		    MUTEX_EXIT(&call->lock);
-		    return 0;
-		}
-#endif /* RX_ENABLE_LOCKS */
+	    if (call->error) {
+		call->app.mode = RX_MODE_ERROR;
+		MUTEX_EXIT(&call->lock);
+		return 0;
 	    }
+#endif /* RX_ENABLE_LOCKS */
 	    if ((call->app.currentPacket = rxi_AllocSendPacket(call, nbytes))) {
 #ifdef RX_TRACK_PACKETS
 		call->app.currentPacket->flags |= RX_PKTFLAG_CP;
@@ -1179,17 +1197,7 @@ rxi_WritevProc(struct rx_call *call, struct iovec *iov, int nio, int nbytes)
     }
 
     /* Wait for the length of the transmit queue to fall below call->twind */
-    while (!call->error && call->tnext + 1 > call->tfirst + (2 * call->twind)) {
-	clock_NewTime();
-	call->startWait = clock_Sec();
-#ifdef	RX_ENABLE_LOCKS
-	CV_WAIT(&call->cv_twind, &call->lock);
-#else
-	call->flags |= RX_CALL_WAIT_WINDOW_ALLOC;
-	osi_rxSleep(&call->twind);
-#endif
-	call->startWait = 0;
-    }
+    rxi_WaitForTransmitWindow(call);
 
     if (call->error) {
         call->app.mode = RX_MODE_ERROR;
