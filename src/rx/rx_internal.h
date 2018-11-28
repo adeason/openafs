@@ -13,6 +13,12 @@
 # endif
 #endif
 
+struct rxi_mmsghdr_s {
+    struct msghdr msg_hdr;
+    unsigned int msg_len;
+};
+typedef struct rxi_mmsghdr_s rxi_mmsghdr;
+
 /* Globals that we don't want the world to know about */
 extern rx_atomic_t rx_nWaiting;
 extern rx_atomic_t rx_nWaited;
@@ -61,9 +67,36 @@ extern void rxi_WaitforTQBusy(struct rx_call *call);
 # define rxi_WaitforTQBusy(call)
 #endif
 
+struct rxi_bulkrecv {
+    struct rx_connection *conn;
+    struct rx_call *call;
+};
+extern void rxi_BulkReceiveStart(struct rxi_bulkrecv *bulkrecv);
+extern struct rx_packet *rxi_BulkReceivePacket(struct rxi_bulkrecv *bulkrecv,
+					       struct rx_packet *np,
+					       osi_socket socket, afs_uint32 host,
+					       u_short port, int *tnop,
+					       struct rx_call **newcallp);
+extern void rxi_BulkReceiveEnd(struct rxi_bulkrecv *bulkrecv);
+
 /* rx_packet.h */
 
 extern int rxi_SendIovecs(struct rx_connection *conn, struct iovec *iov,
 			  int iovcnt, size_t length, int istack);
 extern void rxi_SendRaw(struct rx_call *call, struct rx_connection *conn,
 			int type, char *data, int bytes, int istack);
+
+struct rxi_recvlist;
+extern struct rxi_recvlist * rxi_RecvListAlloc(void);
+extern void rxi_RecvListFree(struct rxi_recvlist **a_rlist);
+extern int rxi_RecvListReset(struct rxi_recvlist *rlist, int cla_ss);
+extern int rxi_ReadPacketList(osi_socket socket, struct rxi_recvlist *rlist);
+extern void rxi_ReceivePacketList(osi_socket socket, struct rxi_recvlist *rlist,
+                                  int *a_tnop, struct rx_call **a_newcallp);
+
+/* rx_pthread.c */
+
+#ifdef AFS_PTHREAD_ENV
+extern int rxi_RecvmsgList(osi_socket socket, rxi_mmsghdr *msgs, int len);
+#endif
+

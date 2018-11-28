@@ -3527,10 +3527,11 @@ rxi_ReceivePacketCall(struct rx_call *call, struct rx_packet *np,
 
 /* Process a packet for the given connection. */
 static struct rx_packet *
-rxi_ReceivePacketConn(struct rx_connection *conn, struct rx_packet *np,
-                      osi_socket socket, int *tnop, struct rx_call **newcallp)
+rxi_ReceivePacketConn(struct rx_connection *conn, struct rx_call **a_call,
+		      struct rx_packet *np, osi_socket socket, int *tnop,
+		      struct rx_call **newcallp)
 {
-    struct rx_call *call = NULL;
+    struct rx_call *call = *a_call;
 
     /* If we're doing statistics, then account for the incoming packet */
     if (rx_stats_active) {
@@ -3583,10 +3584,12 @@ rxi_ReceivePacketConn(struct rx_connection *conn, struct rx_packet *np,
 	}
     }
 
-    if (rx_IsServerConn(conn))
-	call = rxi_ReceiveServerCall(socket, np, conn);
-    else
-	call = rxi_ReceiveClientCall(np, conn);
+    if (!call) {
+	if (rx_IsServerConn(conn))
+	    call = rxi_ReceiveServerCall(socket, np, conn);
+	else
+	    call = rxi_ReceiveClientCall(np, conn);
+    }
 
     if (call == NULL) {
 	goto done;
@@ -3595,9 +3598,7 @@ rxi_ReceivePacketConn(struct rx_connection *conn, struct rx_packet *np,
     np = rxi_ReceivePacketCall(call, np, socket, tnop, newcallp);
 
  done:
-    if (call) {
-	MUTEX_EXIT(&call->lock);
-    }
+    *a_call = call;
     return np;
 }
 
@@ -3612,18 +3613,125 @@ rxi_ReceivePacketConn(struct rx_connection *conn, struct rx_packet *np,
 int (*rx_justReceived) (struct rx_packet *, struct sockaddr_in *) = 0;
 int (*rx_almostSent) (struct rx_packet *, struct sockaddr_in *) = 0;
 
+static int
+packet_matches_conn(struct rx_connection *conn, int type, struct rx_packet *np,
+                    afs_uint32 host, u_short port)
+{
+    if (np->header.type == RX_PACKET_TYPE_VERSION ||
+        np->header.type == RX_PACKET_TYPE_DEBUG) {
+	/* These packet types don't use a connection. */
+	return 0;
+    }
+
+    if (!rxi_ConnectionMatch(conn, host, port, np->header.cid,
+			     np->header.epoch, type,
+			     np->header.securityIndex, NULL)) {
+	return 0;
+    }
+
+    return 1;
+}
+
+static int
+packet_matches_call(struct rx_connection *conn, struct rx_call *call,
+                    struct rx_packet *np)
+{
+    int channel;
+
+    if (!conn) {
+	/* If we don't have a matching conn, we're probably a packet for a
+	 * different conn entirely, so this call cannot be the right one. */
+	return 0;
+    }
+
+    if (rx_ConnectionOf(call) != conn) {
+	/* This shouldn't happen, since if we were given the wrong conn struct,
+	 * we should have already dropped it because packet_matches_conn would
+	 * have failed. But just in case, return 0 here if our call struct
+	 * points to a different conn. */
+	return 0;
+    }
+
+    if (conn->error) {
+	/* If the whole connection is aborted, we're not going to be doing any
+	 * work with this call, so drop the call. Note that even if conn->error
+	 * is not set right now, it could be set later while we're processing
+	 * this packet. */
+	return 0;
+    }
+
+    if (np->header.callNumber == 0) {
+	/* Not a call-specific packet; this cannot be the right call, since
+	 * there is no call at all associated with this packet. */
+	return 0;
+    }
+
+    channel = np->header.cid & RX_CHANNELMASK;
+    if (channel != call->channel) {
+	/* This packet is for a different call channel on the same conn. */
+	return 0;
+    }
+
+    if (np->header.callNumber != *call->callNumber) {
+	/* This packet is for a different call on the same channel. */
+	return 0;
+    }
+
+    return 1;
+}
+
+void
+rxi_BulkReceiveStart(struct rxi_bulkrecv *bulkrecv)
+{
+    memset(bulkrecv, 0, sizeof(*bulkrecv));
+}
+
+void
+rxi_BulkReceiveEnd(struct rxi_bulkrecv *bulkrecv)
+{
+    if (bulkrecv->conn) {
+	putConnection(bulkrecv->conn);
+    }
+    if (bulkrecv->call) {
+	MUTEX_EXIT(&bulkrecv->call->lock);
+    }
+    memset(bulkrecv, 0, sizeof(*bulkrecv));
+}
+
+struct rx_packet *
+rxi_ReceivePacket(struct rx_packet *np, osi_socket socket, afs_uint32 host,
+		  u_short port, int *tnop, struct rx_call **newcallp)
+{
+    struct rxi_bulkrecv bulkrecv;
+    rxi_BulkReceiveStart(&bulkrecv);
+    np = rxi_BulkReceivePacket(&bulkrecv, np, socket, host, port, tnop,
+			       newcallp);
+    rxi_BulkReceiveEnd(&bulkrecv);
+    return np;
+}
+
 /* A packet has been received off the interface.  Np is the packet, socket is
  * the socket number it was received from (useful in determining which service
  * this packet corresponds to), and (host, port) reflect the host,port of the
  * sender.  This call returns the packet to the caller if it is finished with
- * it, rather than de-allocating it, just as a small performance hack */
+ * it, rather than de-allocating it, just as a small performance hack
+ *
+ * 'bulkrecv' optionally contains a conn (with a ref held) and a call (locked)
+ * for the given packet, which is used for making multiple calls to
+ * rxi_BulkReceivePacket while keeping the same conn/call locked. The caller
+ * must call rxi_BulkReceiveStart to initialize 'bulkrecv' before calling
+ * rxi_BulkReceivePacket, and call rxi_BulkReceiveEnd to unlock/free the
+ * resources in 'bulkrecv' after you're done making rxi_BulkReceivePacket
+ * calls. */
 
 struct rx_packet *
-rxi_ReceivePacket(struct rx_packet *np, osi_socket socket,
-		  afs_uint32 host, u_short port, int *tnop,
-		  struct rx_call **newcallp)
+rxi_BulkReceivePacket(struct rxi_bulkrecv *bulkrecv, struct rx_packet *np,
+		      osi_socket socket,
+		      afs_uint32 host, u_short port,
+		      int *tnop, struct rx_call **newcallp)
 {
-    struct rx_connection *conn = NULL;
+    struct rx_connection *conn = bulkrecv->conn;
+    struct rx_call *call = bulkrecv->call;
     int type;
     int unknownService = 0;
 #ifdef RXDEBUG
@@ -3643,6 +3751,20 @@ rxi_ReceivePacket(struct rx_packet *np, osi_socket socket,
 	 np->header.seq, np->header.flags, np));
 #endif
 
+    /* If packet was not sent by the client, then *we* must be the client */
+    type = ((np->header.flags & RX_CLIENT_INITIATED) != RX_CLIENT_INITIATED)
+	? RX_CLIENT_CONNECTION : RX_SERVER_CONNECTION;
+
+    /* Reset our conn and/or call if they don't match the given packet. */
+    if (conn && !packet_matches_conn(conn, type, np, host, port)) {
+	putConnection(conn);
+	conn = NULL;
+    }
+    if (call && !packet_matches_call(conn, call, np)) {
+	MUTEX_EXIT(&call->lock);
+	call = NULL;
+    }
+
     if (np->header.type == RX_PACKET_TYPE_VERSION ||
         np->header.type == RX_PACKET_TYPE_DEBUG) {
 	np = rxi_ReceivePacketGlobal(np, socket, host, port);
@@ -3654,16 +3776,14 @@ rxi_ReceivePacket(struct rx_packet *np, osi_socket socket,
         goto done;
     }
 
-    /* If packet was not sent by the client, then *we* must be the client */
-    type = ((np->header.flags & RX_CLIENT_INITIATED) != RX_CLIENT_INITIATED)
-	? RX_CLIENT_CONNECTION : RX_SERVER_CONNECTION;
-
-    /* Find the connection (or fabricate one, if we're the server & if
-     * necessary) associated with this packet */
-    conn =
-	rxi_FindConnection(socket, host, port, np->header.serviceId,
-			   np->header.cid, np->header.epoch, type,
-			   np->header.securityIndex, &unknownService);
+    if (!conn) {
+	/* Find the connection (or fabricate one, if we're the server & if
+	 * necessary) associated with this packet */
+	conn =
+	    rxi_FindConnection(socket, host, port, np->header.serviceId,
+			       np->header.cid, np->header.epoch, type,
+			       np->header.securityIndex, &unknownService);
+    }
 
     /* To avoid having 2 connections just abort at each other,
        don't abort an abort. */
@@ -3680,12 +3800,11 @@ rxi_ReceivePacket(struct rx_packet *np, osi_socket socket,
     }
 #endif
 
-    np = rxi_ReceivePacketConn(conn, np, socket, tnop, newcallp);
+    np = rxi_ReceivePacketConn(conn, &call, np, socket, tnop, newcallp);
 
  done:
-    if (conn) {
-	putConnection(conn);
-    }
+    bulkrecv->conn = conn;
+    bulkrecv->call = call;
     return np;
 }
 

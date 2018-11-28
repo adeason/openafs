@@ -2952,3 +2952,290 @@ int rx_DumpPackets(FILE *outputFile, char *cookie)
     return 0;
 }
 #endif
+
+#if !defined(KERNEL) && defined(AFS_PTHREAD_ENV)
+
+/* rxi_recvlist functions and structs */
+
+struct rxi_recvitem {
+    struct rx_packet *r_pkt;
+    afs_uint32 r_host;
+    u_short r_port;
+    char r_valid;
+    afs_uint32 r_tlen;
+    afs_uint32 r_savelen;
+    struct sockaddr_in r_sin;
+};
+
+struct rxi_recvlist {
+    struct rxi_recvitem *r_packets;
+    rxi_mmsghdr *r_msgs;
+
+    /* Total number of items in r_packets/r_msgs */
+    int r_alloc;
+
+    /* Number of items in r_packets/r_msgs that actually had something read
+     * into them. These items are not necessarily actually valid packets; you
+     * need to also check r_packets[n].r_valid to see if an individual packet
+     * is valid. But anything beyond 'r_len' is guaranteed to be not read
+     * into. */
+    int r_len;
+
+    /* How many items in r_packets have r_valid set. */
+    int r_nvalid;
+};
+
+void
+rxi_RecvListFree(struct rxi_recvlist **a_rlist)
+{
+    struct rxi_recvlist *rlist = *a_rlist;
+
+    if (!rlist) {
+        return;
+    }
+
+    if (rlist->r_packets) {
+        struct opr_queue freeq;
+        int pkt_i;
+
+        opr_queue_Init(&freeq);
+        for (pkt_i = 0; pkt_i < rlist->r_alloc; pkt_i++) {
+            struct rx_packet *pkt = rlist->r_packets[pkt_i].r_pkt;
+            if (pkt) {
+                opr_queue_Append(&freeq, &pkt->entry);
+            }
+        }
+        rxi_FreePackets(0, &freeq);
+
+        rxi_Free(rlist->r_packets, rlist->r_alloc * sizeof(rlist->r_packets[0]));
+    }
+
+    if (rlist->r_msgs) {
+        rxi_Free(rlist->r_msgs, rlist->r_alloc * sizeof(rlist->r_msgs[0]));
+    }
+
+    rxi_Free(rlist, sizeof(*rlist));
+    *a_rlist = NULL;
+}
+
+static const int rxi_RecvAtOnce = 1;
+struct rxi_recvlist *
+rxi_RecvListAlloc(void)
+{
+    int len;
+    struct rxi_recvlist *rlist = rxi_Alloc(sizeof(*rlist));
+    if (!rlist) {
+        goto error;
+    }
+
+    /* Allocate space for 'rxi_RecvAtOnce' packets. */
+    len = rxi_RecvAtOnce;
+
+    rlist->r_alloc = len;
+
+    rlist->r_packets = rxi_Alloc(len * sizeof(rlist->r_packets[0]));
+    if (!rlist->r_packets) {
+        goto error;
+    }
+
+    rlist->r_msgs = rxi_Alloc(len * sizeof(rlist->r_msgs[0]));
+    if (!rlist->r_msgs) {
+        goto error;
+    }
+
+    /* Pretend all items are potentially 'valid', so rxi_RecvListReset and
+     * rxi_PrepareRecvmsg process them on the first go around. */
+    rlist->r_len = len;
+    return rlist;
+
+ error:
+    rxi_RecvListFree(&rlist);
+    return NULL;
+}
+
+/*
+ * Ensure every packet in the given recvlist is allocated. If we're reusing a
+ * packet that has previously been recv'd into, call rxi_RestoreDataBufs on it.
+ */
+int
+rxi_RecvListReset(struct rxi_recvlist *rlist, int class)
+{
+    int pkt_i;
+
+    /* Only look at the firt r_len items. Everything after that point is
+     * untouched since the last rxi_RecvmsgList call, and so we can reuse
+     * without any processing. */
+
+    for (pkt_i = 0; pkt_i < rlist->r_len; pkt_i++) {
+        rxi_mmsghdr *msg = &rlist->r_msgs[pkt_i];
+        struct rxi_recvitem *item = &rlist->r_packets[pkt_i];
+        struct rx_packet *pkt = item->r_pkt;
+
+        if (pkt) {
+            rxi_RestoreDataBufs(pkt);
+        } else {
+            pkt = rxi_AllocPacket(class);
+            if (!pkt) {
+                return -1;
+            }
+        }
+
+        /* Zero out everything in 'item', but we re-use r_pkt, if it already
+         * had an r_pkt. */
+        memset(item, 0, sizeof(*item));
+        item->r_pkt = pkt;
+
+        memset(msg, 0, sizeof(*msg));
+    }
+    return 0;
+}
+
+/* A variant of rxi_ReadPacket() that reads in an rxi_recvlist instead of a
+ * single packet. */
+int
+rxi_ReadPacketList(osi_socket socket, struct rxi_recvlist *rlist)
+{
+    int pkt_i;
+    int n_recvd;
+    int any_valid = 0;
+
+    /* Everything after the first r_len items should be untouched since
+     * the last rxi_RecvmsgList, so we don't need to run rxi_PrepareRecvMsg on
+     * them. */
+
+    for (pkt_i = 0; pkt_i < rlist->r_len; pkt_i++) {
+        struct msghdr *msg = &rlist->r_msgs[pkt_i].msg_hdr;
+        struct rxi_recvitem *item = &rlist->r_packets[pkt_i];
+
+        rxi_PrepareRecvMsg(msg, item->r_pkt, &item->r_sin, &item->r_tlen,
+                           &item->r_savelen);
+    }
+
+    n_recvd = rxi_RecvmsgList(socket, rlist->r_msgs, rlist->r_alloc);
+    if (n_recvd <= 0) {
+        goto done;
+    }
+
+    /* rxi_RecvmsgList only read in data for the first 'n_recvd' items. We can
+     * ignore everything after that. */
+    rlist->r_len = n_recvd;
+    rlist->r_nvalid = 0;
+
+    for (pkt_i = 0; pkt_i < rlist->r_len; pkt_i++) {
+        struct rxi_recvitem *item = &rlist->r_packets[pkt_i];
+        rxi_mmsghdr *msg = &rlist->r_msgs[pkt_i];
+        struct rx_packet *p = item->r_pkt;
+        int valid;
+
+        /* restore the vec to its correct state */
+        p->wirevec[p->niovecs - 1].iov_len = item->r_savelen;
+
+        valid = rxi_DecodePacket(p, &item->r_sin, &item->r_host,
+                                 &item->r_port, item->r_tlen, msg->msg_len);
+        item->r_valid = valid;
+        if (valid) {
+            any_valid = 1;
+            rlist->r_nvalid++;
+        }
+    }
+ done:
+    return any_valid;
+}
+
+/* qsort callback for struct rxi_recvitem. We sort each item according to the
+ * items in the packet header. We don't actually care much about the order of
+ * the packets, but we want packets for the same call to be adjacent. */
+static int
+cmp_recvitem(const void *el_a, const void *el_b)
+{
+    const struct rxi_recvitem *item_a = el_a;
+    const struct rxi_recvitem *item_b = el_b;
+    const struct rx_header *hdr_a;
+    const struct rx_header *hdr_b;
+
+    if (item_a->r_valid == 0 && item_b->r_valid == 0) {
+        /* both packets are invalid, so both are equal. */
+        return 0;
+    }
+
+#define CMP_INT(val_a, val_b) do { \
+    if (val_a < val_b) { \
+        return -1; \
+    } \
+    if (val_a > val_b) { \
+        return 1; \
+    } \
+} while (0)
+
+    CMP_INT(item_a->r_valid, item_b->r_valid);
+
+    hdr_a = &item_a->r_pkt->header;
+    hdr_b = &item_b->r_pkt->header;
+
+    CMP_INT(hdr_a->epoch,      hdr_b->epoch);
+    CMP_INT(hdr_a->cid,        hdr_b->cid);
+    CMP_INT(hdr_a->callNumber, hdr_b->callNumber);
+    CMP_INT(hdr_a->seq,        hdr_b->seq);
+    CMP_INT(hdr_a->serial,     hdr_b->serial);
+
+    return 0;
+
+#undef CMP_INT
+}
+
+/* A variant of rxi_ReceivePacket that handles an rxi_recvlist instead of a
+ * single packet. */
+void
+rxi_ReceivePacketList(osi_socket socket, struct rxi_recvlist *rlist, int *a_tnop,
+                      struct rx_call **a_newcallp)
+{
+    int pkt_i;
+    struct rxi_bulkrecv bulkrecv;
+    int n_valid = 0;
+
+    /* Sort the items in our recvlist, so packets for the same call will be
+     * next to each other. That way, we will call rxi_ReceivePacketWithCall
+     * repeatedly for the same call, which lets us reuse the call and conn
+     * without needing to unlock/relock the call. */
+    if (rlist->r_len > 2) {
+        /* Only bother sorting if we have more than 2 packets. If we only have
+         * 1 or 2, sorting is clearly a waste of time. */
+        qsort(rlist->r_packets, rlist->r_len, sizeof(rlist->r_packets[0]),
+              cmp_recvitem);
+    }
+
+    rxi_BulkReceiveStart(&bulkrecv);
+
+    for (pkt_i = 0; pkt_i < rlist->r_len; pkt_i++) {
+        struct rxi_recvitem *item = &rlist->r_packets[pkt_i];
+        if (item->r_valid) {
+            int last = 0;
+            int *tnop = NULL;
+            struct rx_call **newcallp = NULL;
+
+            n_valid++;
+
+            clock_NewTime();
+
+            if (n_valid == rlist->r_nvalid) {
+                /* This is the last packet that we'll process in this loop.
+                 * Before this, we must give NULL for tnop/newcallp, since we
+                 * cannot break out of the loop and stop being the listener
+                 * thread, because we have more packets we must process. */
+                last = 1;
+                tnop = a_tnop;
+                newcallp = a_newcallp;
+            }
+
+	    item->r_pkt = rxi_BulkReceivePacket(&bulkrecv, item->r_pkt, socket,
+						item->r_host, item->r_port,
+						tnop, newcallp);
+            if (last) {
+                break;
+            }
+        }
+    }
+
+    rxi_BulkReceiveEnd(&bulkrecv);
+}
+#endif /* !KERNEL && AFS_PTHREAD_ENV */

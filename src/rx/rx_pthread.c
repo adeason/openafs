@@ -204,14 +204,18 @@ rxi_ReScheduleEvents(void)
 static void
 rxi_ListenerProc(osi_socket sock, int *tnop, struct rx_call **newcallp)
 {
-    unsigned int host;
-    u_short port;
-    struct rx_packet *p = (struct rx_packet *)0;
+    int code;
+    struct rxi_recvlist *pkts;
 
     if (!(rx_enable_hot_thread && newcallp)) {
 	/* Don't do this for hot threads, since we might stop being the
 	 * listener. */
 	opr_threadname_set("rx_Listener");
+    }
+
+    pkts = rxi_RecvListAlloc();
+    if (!pkts) {
+        osi_Panic("rxi_Listener: cannot alloc recvlist!");
     }
 
     MUTEX_ENTER(&listener_mutex);
@@ -224,24 +228,16 @@ rxi_ListenerProc(osi_socket sock, int *tnop, struct rx_call **newcallp)
         /* See if a check for additional packets was issued */
         rx_CheckPackets();
 
-	/*
-	 * Grab a new packet only if necessary (otherwise re-use the old one)
-	 */
-	if (p) {
-	    rxi_RestoreDataBufs(p);
-	} else {
-	    if (!(p = rxi_AllocPacket(RX_PACKET_CLASS_RECEIVE))) {
-		/* Could this happen with multiple socket listeners? */
-		osi_Panic("rxi_Listener: no packets!");	/* Shouldn't happen */
-	    }
-	}
+        /* Grab new packets if necessary */
+        code = rxi_RecvListReset(pkts, RX_PACKET_CLASS_RECEIVE);
+        if (code) {
+            osi_Panic("rxi_Listener: no packets!");	/* Shouldn't happen */
+        }
 
-	if (rxi_ReadPacket(sock, p, &host, &port)) {
-	    clock_NewTime();
-	    p = rxi_ReceivePacket(p, sock, host, port, tnop, newcallp);
+	if (rxi_ReadPacketList(sock, pkts)) {
+	    rxi_ReceivePacketList(sock, pkts, tnop, newcallp);
 	    if (newcallp && *newcallp) {
-		if (p)
-		    rxi_FreePacket(p);
+		rxi_RecvListFree(&pkts);
 		return;
 	    }
 	}
@@ -407,6 +403,50 @@ rxi_Recvmsg(osi_socket socket, struct msghdr *msg_p, int flags)
 #endif
 
     return ret;
+}
+
+/* recvmmsg (emulated). Receive multiple packets from the given socket. We
+ * emulate recvmmsg(MSG_WAITFORONE) behavior here; that is, block waiting for
+ * the first packet, and then do a nonblocking recvmsg on the rest. */
+int
+rxi_RecvmsgList(osi_socket socket, rxi_mmsghdr *msgs, int len)
+{
+    int flags = 0;
+    int n_recvd = 0;
+
+#ifdef AFS_RXERRQ_ENV
+    while (rxi_HandleSocketError(socket) > 0)
+        ;
+#endif
+
+    if (len < 1) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    while (n_recvd < len) {
+        int code;
+        code = recvmsg(socket, &msgs[n_recvd].msg_hdr, flags);
+        if (code < 0) {
+            if (n_recvd > 0) {
+                /* We've already successfully received one packet, so an error
+                 * just means we stop collecting packets. We don't report an
+                 * error, no matter what it is (just like with the real
+                 * recvmmsg); just stop receiving. */
+                goto done;
+            }
+            return code;
+        }
+
+        msgs[n_recvd].msg_len = code;
+        n_recvd++;
+
+        /* After the first successful recvmsg, don't block waiting for more. */
+        flags = MSG_DONTWAIT;
+    }
+
+ done:
+    return n_recvd;
 }
 
 /*
