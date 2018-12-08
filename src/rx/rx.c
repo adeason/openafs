@@ -3407,14 +3407,13 @@ rxi_ReceivePacket(struct rx_packet *np, osi_socket socket,
 		  afs_uint32 host, u_short port, int *tnop,
 		  struct rx_call **newcallp)
 {
-    struct rx_call *call;
-    struct rx_connection *conn;
+    struct rx_call *call = NULL;
+    struct rx_connection *conn = NULL;
     int type;
     int unknownService = 0;
 #ifdef RXDEBUG
     char *packetType;
 #endif
-    struct rx_packet *tnp;
 
 #ifdef RXDEBUG
 /* We don't print out the packet until now because (1) the time may not be
@@ -3455,11 +3454,13 @@ rxi_ReceivePacket(struct rx_packet *np, osi_socket socket,
     }
 
     if (np->header.type == RX_PACKET_TYPE_VERSION) {
-	return rxi_ReceiveVersionPacket(np, socket, host, port, 1);
+	np = rxi_ReceiveVersionPacket(np, socket, host, port, 1);
+	goto done;
     }
 
     if (np->header.type == RX_PACKET_TYPE_DEBUG) {
-	return rxi_ReceiveDebugPacket(np, socket, host, port, 1);
+	np = rxi_ReceiveDebugPacket(np, socket, host, port, 1);
+	goto done;
     }
 #ifdef RXDEBUG
     /* If an input tracer function is defined, call it with the packet and
@@ -3477,7 +3478,7 @@ rxi_ReceivePacket(struct rx_packet *np, osi_socket socket,
 	drop = (*rx_justReceived) (np, &addr);
 	/* drop packet if return value is non-zero */
 	if (drop)
-	    return np;
+	    goto done;
 	port = addr.sin_port;	/* in case fcn changed addr */
 	host = addr.sin_addr.s_addr;
     }
@@ -3500,7 +3501,7 @@ rxi_ReceivePacket(struct rx_packet *np, osi_socket socket,
         if (unknownService && (np->header.type != RX_PACKET_TYPE_ABORT))
 	    rxi_SendRawAbort(socket, host, port, 0, RX_INVALID_OPERATION,
                              np, 0);
-        return np;
+        goto done;
     }
 
 #ifdef AFS_RXERRQ_ENV
@@ -3523,9 +3524,8 @@ rxi_ReceivePacket(struct rx_packet *np, osi_socket socket,
 	MUTEX_ENTER(&conn->conn_data_lock);
 	if (np->header.type != RX_PACKET_TYPE_ABORT)
 	    np = rxi_SendConnectionAbort(conn, np, 1, 0);
-	putConnection(conn);
 	MUTEX_EXIT(&conn->conn_data_lock);
-	return np;
+	goto done;
     }
 
     /* Check for connection-only requests (i.e. not call specific). */
@@ -3536,33 +3536,28 @@ rxi_ReceivePacket(struct rx_packet *np, osi_socket socket,
 	    afs_int32 errcode = ntohl(rx_GetInt32(np, 0));
 	    dpf(("rxi_ReceivePacket ABORT rx_GetInt32 = %d\n", errcode));
 	    rxi_ConnectionError(conn, errcode);
-	    putConnection(conn);
-	    return np;
+	    goto done;
 	}
 	case RX_PACKET_TYPE_CHALLENGE:
-	    tnp = rxi_ReceiveChallengePacket(conn, np, 1);
-	    putConnection(conn);
-	    return tnp;
+	    np = rxi_ReceiveChallengePacket(conn, np, 1);
+	    goto done;
 	case RX_PACKET_TYPE_RESPONSE:
-	    tnp = rxi_ReceiveResponsePacket(conn, np, 1);
-	    putConnection(conn);
-	    return tnp;
+	    np = rxi_ReceiveResponsePacket(conn, np, 1);
+	    goto done;
 	case RX_PACKET_TYPE_PARAMS:
 	case RX_PACKET_TYPE_PARAMS + 1:
 	case RX_PACKET_TYPE_PARAMS + 2:
 	    /* ignore these packet types for now */
-	    putConnection(conn);
-	    return np;
+	    goto done;
 
 	default:
 	    /* Should not reach here, unless the peer is broken: send an
 	     * abort packet */
 	    rxi_ConnectionError(conn, RX_PROTOCOL_ERROR);
 	    MUTEX_ENTER(&conn->conn_data_lock);
-	    tnp = rxi_SendConnectionAbort(conn, np, 1, 0);
-	    putConnection(conn);
+	    np = rxi_SendConnectionAbort(conn, np, 1, 0);
 	    MUTEX_EXIT(&conn->conn_data_lock);
-	    return tnp;
+	    goto done;
 	}
     }
 
@@ -3572,8 +3567,7 @@ rxi_ReceivePacket(struct rx_packet *np, osi_socket socket,
 	call = rxi_ReceiveClientCall(np, conn);
 
     if (call == NULL) {
-	putConnection(conn);
-	return np;
+	goto done;
     }
 
     MUTEX_ASSERT(&call->lock);
@@ -3609,9 +3603,7 @@ rxi_ReceivePacket(struct rx_packet *np, osi_socket socket,
 	afs_int32 errdata = ntohl(*(afs_int32 *) rx_DataOf(np));
 	dpf(("rxi_ReceivePacket ABORT rx_DataOf = %d\n", errdata));
 	rxi_CallError(call, errdata);
-	MUTEX_EXIT(&call->lock);
-	putConnection(conn);
-	return np;		/* xmitting; drop packet */
+	goto done;		/* xmitting; drop packet */
     }
     case RX_PACKET_TYPE_BUSY:
 	/* Mostly ignore BUSY packets. We will update lastReceiveTime below,
@@ -3638,8 +3630,14 @@ rxi_ReceivePacket(struct rx_packet *np, osi_socket socket,
      * the packet will be delivered to the user before any get time is required
      * (if not, then the time won't actually be re-evaluated here). */
     call->lastReceiveTime = clock_Sec();
-    MUTEX_EXIT(&call->lock);
-    putConnection(conn);
+
+ done:
+    if (call) {
+	MUTEX_EXIT(&call->lock);
+    }
+    if (conn) {
+	putConnection(conn);
+    }
     return np;
 }
 
