@@ -1571,8 +1571,7 @@ rxi_DecodePacket(struct rx_packet *p, struct sockaddr_in *from,
  * last two pad bytes. */
 
 struct rx_packet *
-rxi_SplitJumboPacket(struct rx_packet *p, afs_uint32 host, short port,
-		     int first)
+rxi_SplitJumboPacket(struct rx_packet *p)
 {
     struct rx_packet *np;
     struct rx_jumboHeader *jp;
