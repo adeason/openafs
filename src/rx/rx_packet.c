@@ -2239,6 +2239,17 @@ void
 rxi_SendPacket(struct rx_call *call, struct rx_connection *conn,
 	       struct rx_packet *p, int istack)
 {
+    rxi_SendPacketDgrams(call, conn, &p, 1, NULL, istack);
+}
+
+/* Send, in separate udp datagrams, a list of packets to appropriate
+ * destination for the specified connection.  The headers are first encoded and
+ * placed in the packets. */
+void
+rxi_SendPacketDgrams(struct rx_call *call, struct rx_connection *conn,
+		     struct rx_packet **list, int len,
+		     struct rxi_xmit_dgramlist *dgramlist, int istack)
+{
 #if defined(KERNEL)
     int waslocked;
 #endif
@@ -2246,6 +2257,7 @@ rxi_SendPacket(struct rx_call *call, struct rx_connection *conn,
     struct sockaddr_in addr;
     struct rx_peer *peer = conn->peer;
     osi_socket socket;
+    int pkt_i;
 #ifdef RXDEBUG
     char deliveryType = 'S';
 #endif
@@ -2268,38 +2280,21 @@ rxi_SendPacket(struct rx_call *call, struct rx_connection *conn,
     /* Pre-increment, to guarantee no zero serial number; a zero
      * serial number means the packet was never sent. */
     MUTEX_ENTER(&conn->conn_data_lock);
-    p->header.serial = ++conn->serial;
-    if (p->length > conn->peer->maxPacketSize) {
-	if ((p->header.type == RX_PACKET_TYPE_ACK) &&
-	    (p->header.flags & RX_REQUEST_ACK)) {
-	    conn->lastPingSize = p->length;
-	    conn->lastPingSizeSer = p->header.serial;
-	} else if (p->header.seq != 0) {
-	    conn->lastPacketSize = p->length;
-	    conn->lastPacketSizeSeq = p->header.seq;
-	}
+    for (pkt_i = 0; pkt_i < len; pkt_i++) {
+        struct rx_packet *p = list[pkt_i];
+        p->header.serial = ++conn->serial;
+        if (p->length > conn->peer->maxPacketSize) {
+            if ((p->header.type == RX_PACKET_TYPE_ACK) &&
+                (p->header.flags & RX_REQUEST_ACK)) {
+                conn->lastPingSize = p->length;
+                conn->lastPingSizeSer = p->header.serial;
+            } else if (p->header.seq != 0) {
+                conn->lastPacketSize = p->length;
+                conn->lastPacketSizeSeq = p->header.seq;
+            }
+        }
     }
     MUTEX_EXIT(&conn->conn_data_lock);
-    /* This is so we can adjust retransmit time-outs better in the face of
-     * rapidly changing round-trip times.  RTO estimation is not a la Karn.
-     */
-    if (p->firstSerial == 0) {
-	p->firstSerial = p->header.serial;
-    }
-#ifdef RXDEBUG
-    /* If an output tracer function is defined, call it with the packet and
-     * network address.  Note this function may modify its arguments. */
-    if (rx_almostSent) {
-	int drop = (*rx_almostSent) (p, &addr);
-	/* drop packet if return value is non-zero? */
-	if (drop)
-	    deliveryType = 'D';	/* Drop the packet */
-    }
-#endif
-
-    /* Get network byte order header */
-    rxi_EncodePacketHeader(p);	/* XXX in the event of rexmit, etc, don't need to
-				 * touch ALL the fields */
 
     /* Send the packet out on the same socket that related packets are being
      * received on */
@@ -2307,77 +2302,107 @@ rxi_SendPacket(struct rx_call *call, struct rx_connection *conn,
 	(conn->type ==
 	 RX_CLIENT_CONNECTION ? rx_socket : conn->service->socket);
 
+    for (pkt_i = 0; pkt_i < len; pkt_i++) {
+        struct rx_packet *p = list[pkt_i];
+
+        /* This is so we can adjust retransmit time-outs better in the face of
+         * rapidly changing round-trip times.  RTO estimation is not a la Karn.
+         */
+        if (p->firstSerial == 0) {
+            p->firstSerial = p->header.serial;
+        }
 #ifdef RXDEBUG
-    /* Possibly drop this packet,  for testing purposes */
-    if ((deliveryType == 'D')
-	|| ((rx_intentionallyDroppedPacketsPer100 > 0)
-	    && (random() % 100 < rx_intentionallyDroppedPacketsPer100))) {
-	deliveryType = 'D';	/* Drop the packet */
-    } else {
-	deliveryType = 'S';	/* Send the packet */
+        /* If an output tracer function is defined, call it with the packet and
+         * network address.  Note this function may modify its arguments. */
+        if (rx_almostSent) {
+            int drop = (*rx_almostSent) (p, &addr);
+            /* drop packet if return value is non-zero? */
+            if (drop)
+                deliveryType = 'D';	/* Drop the packet */
+        }
+#endif
+
+        /* Get network byte order header */
+        rxi_EncodePacketHeader(p);	/* XXX in the event of rexmit, etc, don't need to
+                                     * touch ALL the fields */
+
+#ifdef RXDEBUG
+        /* Possibly drop this packet,  for testing purposes */
+        if ((deliveryType == 'D')
+            || ((rx_intentionallyDroppedPacketsPer100 > 0)
+                && (random() % 100 < rx_intentionallyDroppedPacketsPer100))) {
+            deliveryType = 'D';	/* Drop the packet */
+        } else {
+            deliveryType = 'S';	/* Send the packet */
 #endif /* RXDEBUG */
 
-	/* Loop until the packet is sent.  We'd prefer just to use a
-	 * blocking socket, but unfortunately the interface doesn't
-	 * allow us to have the socket block in send mode, and not
-	 * block in receive mode */
+            /* Loop until the packet is sent.  We'd prefer just to use a
+             * blocking socket, but unfortunately the interface doesn't
+             * allow us to have the socket block in send mode, and not
+             * block in receive mode */
 #ifdef KERNEL
-	waslocked = ISAFS_GLOCK();
+            waslocked = ISAFS_GLOCK();
 #ifdef RX_KERNEL_TRACE
-	if (ICL_SETACTIVE(afs_iclSetp)) {
-	    if (!waslocked)
-		AFS_GLOCK();
-	    afs_Trace1(afs_iclSetp, CM_TRACE_TIMESTAMP, ICL_TYPE_STRING,
-		       "before osi_NetSend()");
-	    AFS_GUNLOCK();
-	}
-#else
-	if (waslocked)
-	    AFS_GUNLOCK();
-#endif
-#endif
-	if ((code =
-	     osi_NetSend(socket, &addr, p->wirevec, p->niovecs,
-			 p->length + RX_HEADER_SIZE, istack)) != 0) {
-	    /* send failed, so let's hurry up the resend, eh? */
-            if (rx_stats_active)
-                rx_atomic_inc(&rx_stats.netSendFailures);
-	    p->flags &= ~RX_PKTFLAG_SENT; /* resend it very soon */
-
-	    /* Some systems are nice and tell us right away that we cannot
-	     * reach this recipient by returning an error code.
-	     * So, when this happens let's "down" the host NOW so
-	     * we don't sit around waiting for this host to timeout later.
-	     */
-	    if (call) {
-		rxi_NetSendError(call, code);
-	    }
-	}
-#ifdef KERNEL
-#ifdef RX_KERNEL_TRACE
-	if (ICL_SETACTIVE(afs_iclSetp)) {
-	    AFS_GLOCK();
-	    afs_Trace1(afs_iclSetp, CM_TRACE_TIMESTAMP, ICL_TYPE_STRING,
-		       "after osi_NetSend()");
-	    if (!waslocked)
+	    if (ICL_SETACTIVE(afs_iclSetp)) {
+		if (!waslocked)
+		    AFS_GLOCK();
+		afs_Trace1(afs_iclSetp, CM_TRACE_TIMESTAMP, ICL_TYPE_STRING,
+			   "before osi_NetSend()");
 		AFS_GUNLOCK();
-	}
+	    }
 #else
-	if (waslocked)
-	    AFS_GLOCK();
+            if (waslocked)
+                AFS_GUNLOCK();
+#endif
+#endif
+	    if ((code =
+		 osi_NetSend(socket, &addr, p->wirevec, p->niovecs,
+			     p->length + RX_HEADER_SIZE, istack)) != 0) {
+		/* send failed, so let's hurry up the resend, eh? */
+		if (rx_stats_active)
+		    rx_atomic_inc(&rx_stats.netSendFailures);
+		p->flags &= ~RX_PKTFLAG_SENT; /* resend it very soon */
+
+		/* Some systems are nice and tell us right away that we cannot
+		 * reach this recipient by returning an error code.
+		 * So, when this happens let's "down" the host NOW so
+		 * we don't sit around waiting for this host to timeout later.
+		 */
+		if (call) {
+		    rxi_NetSendError(call, code);
+		}
+	    }
+#ifdef KERNEL
+#ifdef RX_KERNEL_TRACE
+	    if (ICL_SETACTIVE(afs_iclSetp)) {
+		AFS_GLOCK();
+		afs_Trace1(afs_iclSetp, CM_TRACE_TIMESTAMP, ICL_TYPE_STRING,
+			   "after osi_NetSend()");
+		if (!waslocked)
+		    AFS_GUNLOCK();
+	    }
+#else
+            if (waslocked)
+                AFS_GLOCK();
 #endif
 #endif
 #ifdef RXDEBUG
-    }
-    dpf(("%c %d %s: %x.%u.%u.%u.%u.%u.%u flags %d, packet %"AFS_PTR_FMT" len %d\n",
-          deliveryType, p->header.serial, rx_packetTypes[p->header.type - 1], ntohl(peer->host),
-          ntohs(peer->port), p->header.serial, p->header.epoch, p->header.cid, p->header.callNumber,
-          p->header.seq, p->header.flags, p, p->length));
+	}
+	dpf(("%c %d %s: %x.%u.%u.%u.%u.%u.%u flags %d, packet %"AFS_PTR_FMT" len %d\n",
+	      deliveryType, p->header.serial, rx_packetTypes[p->header.type - 1], ntohl(peer->host),
+	      ntohs(peer->port), p->header.serial, p->header.epoch, p->header.cid, p->header.callNumber,
+	      p->header.seq, p->header.flags, p, p->length));
 #endif
+    }
     if (rx_stats_active) {
-        rx_atomic_inc(&rx_stats.packetsSent[p->header.type - 1]);
+        afs_uint32 length = 0;
+        for (pkt_i = 0; pkt_i < len; pkt_i++) {
+            struct rx_packet *p = list[pkt_i];
+            rx_atomic_inc(&rx_stats.packetsSent[p->header.type - 1]);
+            length += p->length;
+        }
         MUTEX_ENTER(&peer->peer_lock);
-        peer->bytesSent += p->length;
+        peer->bytesSent += length;
         MUTEX_EXIT(&peer->peer_lock);
     }
 }

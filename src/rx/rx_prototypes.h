@@ -423,6 +423,12 @@ extern void rxi_SendPacket(struct rx_call *call, struct rx_connection *conn,
 extern void rxi_SendPacketList(struct rx_call *call,
 			       struct rx_connection *conn,
 			       struct rx_packet **list, int len, int istack);
+struct rxi_xmit_dgramlist;
+extern void rxi_SendPacketDgrams(struct rx_call *call,
+			         struct rx_connection *conn,
+			         struct rx_packet **list, int len,
+			         struct rxi_xmit_dgramlist *dgramlist,
+			         int istack);
 extern void rxi_SendRawAbort(osi_socket socket, afs_uint32 host, u_short port,
 			     afs_uint32 serial, afs_int32 error,
 			     struct rx_packet *source, int istack);

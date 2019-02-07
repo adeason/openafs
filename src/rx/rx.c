@@ -5939,7 +5939,9 @@ struct xmitlist {
 
 /* Flags for rxi_SendList */
 
-#define RXI_SENDLIST_MORE (0x1) /* should RX_MORE_PACKETS be set? */
+#define RXI_SENDLIST_MORE   (0x1) /* should RX_MORE_PACKETS be set? */
+#define RXI_SENDLIST_DGRAMS (0x2) /* send the list as separate datagrams, not
+                                   * as one big jumbogram */
 
 /* Send all of the packets in the list in single datagram */
 static void
@@ -5953,9 +5955,14 @@ rxi_SendList(struct rx_call *call, struct xmitlist *xmit,
     struct rx_connection *conn = call->conn;
     struct rx_peer *peer = conn->peer;
     int moreFlag = 0;
+    int dgrams = 0;
+    struct rxi_xmit_dgramlist *dgramlist = NULL;
 
     if ((flags & RXI_SENDLIST_MORE)) {
         moreFlag = 1;
+    }
+    if ((flags & RXI_SENDLIST_DGRAMS)) {
+        dgrams = 1;
     }
 
     MUTEX_ENTER(&peer->peer_lock);
@@ -5965,10 +5972,30 @@ rxi_SendList(struct rx_call *call, struct xmitlist *xmit,
     MUTEX_EXIT(&peer->peer_lock);
 
     if (rx_stats_active) {
-        if (xmit->resending)
-            rx_atomic_add(&rx_stats.dataPacketsReSent, xmit->len);
+        int n_sent = 0, n_resent = 0;
+        if (dgrams) {
+            /* If we're sending separate dgrams, we may have resent packets
+             * mixed in with new packets. Count how many we have of each, so we
+             * can increment the stats correctly. */
+            int pkt_i;
+            for (pkt_i = 0; pkt_i < xmit->len; pkt_i++) {
+                if (xmit->list[pkt_i]->header.serial) {
+                    n_resent++;
+                } else {
+                    n_sent++;
+                }
+            }
+        } else if (xmit->resending)
+            n_resent = xmit->len;
         else
-            rx_atomic_add(&rx_stats.dataPacketsSent, xmit->len);
+            n_sent = xmit->len;
+
+        if (n_resent) {
+            rx_atomic_add(&rx_stats.dataPacketsReSent, n_resent);
+        }
+        if (n_sent) {
+            rx_atomic_add(&rx_stats.dataPacketsSent, n_sent);
+        }
     }
 
     clock_GetTime(&now);
@@ -5981,6 +6008,10 @@ rxi_SendList(struct rx_call *call, struct xmitlist *xmit,
     /* Only request an ack for the last packet in the list */
     for (i = 0; i < xmit->len; i++) {
 	struct rx_packet *packet = xmit->list[i];
+
+	if (dgrams) {
+	    requestAck = 0;
+	}
 
 	/* Record the time sent */
 	packet->timeSent = now;
@@ -6000,6 +6031,10 @@ rxi_SendList(struct rx_call *call, struct xmitlist *xmit,
 	    }
 	}
 
+	if (dgrams && requestAck) {
+	    packet->header.flags |= RX_REQUEST_ACK;
+	}
+
 	/* Tag this packet as not being the last in this group,
 	 * for the receiver's benefit */
 	if (i < xmit->len - 1 || moreFlag) {
@@ -6007,7 +6042,7 @@ rxi_SendList(struct rx_call *call, struct xmitlist *xmit,
 	}
     }
 
-    if (requestAck) {
+    if (!dgrams && requestAck) {
 	xmit->list[xmit->len - 1]->header.flags |= RX_REQUEST_ACK;
     }
 
@@ -6017,10 +6052,10 @@ rxi_SendList(struct rx_call *call, struct xmitlist *xmit,
 
     MUTEX_EXIT(&call->lock);
     CALL_HOLD(call, RX_CALL_REFCOUNT_SEND);
-    if (xmit->len > 1) {
+    if (!dgrams && xmit->len > 1) {
 	rxi_SendPacketList(call, conn, xmit->list, xmit->len, istack);
     } else {
-	rxi_SendPacket(call, conn, xmit->list[0], istack);
+	rxi_SendPacketDgrams(call, conn, xmit->list, xmit->len, dgramlist, istack);
     }
     MUTEX_ENTER(&call->lock);
     CALL_RELE(call, RX_CALL_REFCOUNT_SEND);
@@ -6054,11 +6089,26 @@ rxi_SendXmitList(struct rx_call *call, struct rx_packet **list, int len,
     struct xmitlist last;
 
     struct rx_peer *peer = call->conn->peer;
+    int max_pkts;
 
     memset(&last, 0, sizeof(struct xmitlist));
     working.list = &list[0];
     working.len = 0;
     working.resending = 0;
+
+    max_pkts = peer->maxDgramPackets;
+    max_pkts = MIN(max_pkts, call->nDgramPackets);
+    max_pkts = MIN(max_pkts, call->cwind);
+    if (max_pkts == 1 && len > 1) {
+        /* If we can't send more than 1 packet at once, we're not going to be
+         * sending any jumbograms. And if we're not sending any jumbograms, we
+         * can just send the whole list of packets at once (but in separate
+         * datagrams). That way we can skip some processing, avoid needing to
+         * release/reacquire locks multiple times, etc. */
+        working.len = len;
+        rxi_SendList(call, &working, istack, RXI_SENDLIST_DGRAMS);
+        return;
+    }
 
     recovery = call->flags & RX_CALL_FAST_RECOVER;
 
