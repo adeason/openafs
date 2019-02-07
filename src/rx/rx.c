@@ -5937,10 +5937,14 @@ struct xmitlist {
    int resending;
 };
 
+/* Flags for rxi_SendList */
+
+#define RXI_SENDLIST_MORE (0x1) /* should RX_MORE_PACKETS be set? */
+
 /* Send all of the packets in the list in single datagram */
 static void
 rxi_SendList(struct rx_call *call, struct xmitlist *xmit,
-	     int istack, int moreFlag)
+	     int istack, afs_uint32 flags)
 {
     int i;
     int requestAck = 0;
@@ -5948,6 +5952,11 @@ rxi_SendList(struct rx_call *call, struct xmitlist *xmit,
     struct clock now;
     struct rx_connection *conn = call->conn;
     struct rx_peer *peer = conn->peer;
+    int moreFlag = 0;
+
+    if ((flags & RXI_SENDLIST_MORE)) {
+        moreFlag = 1;
+    }
 
     MUTEX_ENTER(&peer->peer_lock);
     peer->nSent += xmit->len;
@@ -6045,7 +6054,6 @@ rxi_SendXmitList(struct rx_call *call, struct rx_packet **list, int len,
     struct xmitlist last;
 
     struct rx_peer *peer = call->conn->peer;
-    int morePackets = 0;
 
     memset(&last, 0, sizeof(struct xmitlist));
     working.list = &list[0];
@@ -6064,7 +6072,7 @@ rxi_SendXmitList(struct rx_call *call, struct rx_packet **list, int len,
 	     * set into the 'last' one, and resets the working set */
 
 	    if (last.len > 0) {
-		rxi_SendList(call, &last, istack, 1);
+		rxi_SendList(call, &last, istack, RXI_SENDLIST_MORE);
 		/* If the call enters an error state stop sending, or if
 		 * we entered congestion recovery mode, stop sending */
 		if (call->error
@@ -6091,7 +6099,7 @@ rxi_SendXmitList(struct rx_call *call, struct rx_packet **list, int len,
 		|| list[i]->header.serial
 		|| list[i]->length != RX_JUMBOBUFFERSIZE) {
 		if (last.len > 0) {
-		    rxi_SendList(call, &last, istack, 1);
+		    rxi_SendList(call, &last, istack, RXI_SENDLIST_MORE);
 		    /* If the call enters an error state stop sending, or if
 		     * we entered congestion recovery mode, stop sending */
 		    if (call->error
@@ -6120,12 +6128,13 @@ rxi_SendXmitList(struct rx_call *call, struct rx_packet **list, int len,
     if ((list[len - 1]->header.flags & RX_LAST_PACKET)
 	|| (call->flags & RX_CALL_FLUSH)
 	|| (call->flags & RX_CALL_FAST_RECOVER)) {
+        afs_uint32 morePackets = 0;
 	/* Check for the case where the current list contains
 	 * an acked packet. Since we always send retransmissions
 	 * in a separate packet, we only need to check the first
 	 * packet in the list */
 	if (working.len > 0 && !(working.list[0]->flags & RX_PKTFLAG_ACKED)) {
-	    morePackets = 1;
+	    morePackets = RXI_SENDLIST_MORE;
 	}
 	if (last.len > 0) {
 	    rxi_SendList(call, &last, istack, morePackets);
