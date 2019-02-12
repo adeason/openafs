@@ -61,12 +61,24 @@ afs_kmutex_t listener_mutex;
 static int listeners_started = 0;
 afs_kmutex_t rx_clock_mutex;
 struct clock rxi_clockNow;
+static int rxi_n_listeners = 1;
+#define RXI_NLISTENERS_MAX 1024
 
 static rx_atomic_t threadHiNum;
 
 int
 rx_NewThreadId(void) {
     return rx_atomic_inc_and_read(&threadHiNum);
+}
+
+int
+rx_SetListenerThreads(int nthreads)
+{
+    if (nthreads < 1 || nthreads > RXI_NLISTENERS_MAX) {
+        return -EINVAL;
+    }
+    rxi_n_listeners = nthreads;
+    return 0;
 }
 
 /*
@@ -269,6 +281,18 @@ rx_ListenerProc(void *argp)
     AFS_UNREACHED(return(NULL));
 }
 
+/* Like rx_ListenerProc, but we never switch to a server thread. */
+static void *
+rx_SubListenerProc(void *argp)
+{
+    osi_socket sock = (osi_socket)(intptr_t)argp;
+    while (1) {
+        rxi_ListenerProc(sock, NULL, NULL);
+    }
+    /* not reached */
+    return NULL;
+}
+
 /* This is the server process request loop. The server process loop
  * becomes a listener thread when rxi_ServerProc returns, and stays
  * listener thread until rxi_ListenerProc returns. */
@@ -363,6 +387,7 @@ rxi_StartListener(void)
 int
 rxi_Listen(osi_socket sock)
 {
+    int list_i;
     pthread_t thread;
     pthread_attr_t tattr;
     AFS_SIGSET_DECL;
@@ -380,6 +405,15 @@ rxi_Listen(osi_socket sock)
 	osi_Panic("Unable to create socket listener thread\n");
     }
     rx_NewThreadId();
+
+    /* We've created one listener thread. Spawn more "sub-listener" threads
+     * until we have rxi_n_listeners threads total. */
+    for (list_i = 1; list_i < rxi_n_listeners; list_i++) {
+        if (pthread_create(&thread, &tattr, rx_SubListenerProc, (void *)(intptr_t)sock) != 0) {
+            osi_Panic("Unable to create socket listener thread\n");
+        }
+        rx_NewThreadId();
+    }
     AFS_SIGSET_RESTORE();
     return 0;
 }

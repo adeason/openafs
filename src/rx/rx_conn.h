@@ -26,6 +26,7 @@ struct rx_connection {
     afs_kmutex_t conn_call_lock;	/* locks conn_call_cv */
     afs_kcondvar_t conn_call_cv;
     afs_kmutex_t conn_data_lock;	/* locks packet data */
+    afs_kmutex_t conn_recv_lock;	/* serializes rxi_BulkReceivePacket */
 #endif
     afs_uint32 epoch;		/* Process start time of client side of connection */
     afs_uint32 cid;		/* Connection id (call channel is bottom bits) */

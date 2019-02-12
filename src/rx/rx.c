@@ -403,6 +403,7 @@ struct rx_connection *rxLastConn = 0;
  *
  * rx_connHashTable_lock - synchronizes conn creation, rx_connHashTable access
  *                         also protects updates to rx_nextCid
+ * conn_recv_lock - serializes rxi_BulkReceivePacket calls for the same conn
  * conn_call_lock - used to synchonize rx_EndCall and rx_NewCall
  * call->lock - locks call data fields.
  * These are independent of each other:
@@ -1059,6 +1060,7 @@ rx_NewConnection(afs_uint32 shost, u_short sport, u_short sservice,
 #ifdef	RX_ENABLE_LOCKS
     MUTEX_INIT(&conn->conn_call_lock, "conn call lock", MUTEX_DEFAULT, 0);
     MUTEX_INIT(&conn->conn_data_lock, "conn data lock", MUTEX_DEFAULT, 0);
+    MUTEX_INIT(&conn->conn_recv_lock, "conn recv lock", MUTEX_DEFAULT, 0);
     CV_INIT(&conn->conn_call_cv, "conn call cv", CV_DEFAULT, 0);
 #endif
     NETPRI;
@@ -1218,6 +1220,7 @@ rxi_CleanupConnection(struct rx_connection *conn)
 
     MUTEX_DESTROY(&conn->conn_call_lock);
     MUTEX_DESTROY(&conn->conn_data_lock);
+    MUTEX_DESTROY(&conn->conn_recv_lock);
     CV_DESTROY(&conn->conn_call_cv);
 
     rxi_FreeConnection(conn);
@@ -3192,6 +3195,7 @@ rxi_FindConnection(osi_socket socket, afs_uint32 host,
 	conn = rxi_AllocConnection();	/* This bzero's the connection */
 	MUTEX_INIT(&conn->conn_call_lock, "conn call lock", MUTEX_DEFAULT, 0);
 	MUTEX_INIT(&conn->conn_data_lock, "conn data lock", MUTEX_DEFAULT, 0);
+	MUTEX_INIT(&conn->conn_recv_lock, "conn recv lock", MUTEX_DEFAULT, 0);
 	CV_INIT(&conn->conn_call_cv, "conn call cv", CV_DEFAULT, 0);
 	conn->next = rx_connHashTable[hashindex];
 	rx_connHashTable[hashindex] = conn;
@@ -3690,6 +3694,7 @@ void
 rxi_BulkReceiveEnd(struct rxi_bulkrecv *bulkrecv)
 {
     if (bulkrecv->conn) {
+	MUTEX_EXIT(&bulkrecv->conn->conn_recv_lock);
 	putConnection(bulkrecv->conn);
     }
     if (bulkrecv->call) {
@@ -3716,13 +3721,13 @@ rxi_ReceivePacket(struct rx_packet *np, osi_socket socket, afs_uint32 host,
  * sender.  This call returns the packet to the caller if it is finished with
  * it, rather than de-allocating it, just as a small performance hack
  *
- * 'bulkrecv' optionally contains a conn (with a ref held) and a call (locked)
- * for the given packet, which is used for making multiple calls to
- * rxi_BulkReceivePacket while keeping the same conn/call locked. The caller
- * must call rxi_BulkReceiveStart to initialize 'bulkrecv' before calling
- * rxi_BulkReceivePacket, and call rxi_BulkReceiveEnd to unlock/free the
- * resources in 'bulkrecv' after you're done making rxi_BulkReceivePacket
- * calls. */
+ * 'bulkrecv' optionally contains a conn (with a ref held and conn_recv_lock
+ * locked) and a call (locked) for the given packet, which is used for making
+ * multiple calls to rxi_BulkReceivePacket while keeping the same conn/call
+ * locked. The caller must call rxi_BulkReceiveStart to initialize 'bulkrecv'
+ * before calling rxi_BulkReceivePacket, and call rxi_BulkReceiveEnd to
+ * unlock/free the resources in 'bulkrecv' after you're done making
+ * rxi_BulkReceivePacket calls. */
 
 struct rx_packet *
 rxi_BulkReceivePacket(struct rxi_bulkrecv *bulkrecv, struct rx_packet *np,
@@ -3757,6 +3762,7 @@ rxi_BulkReceivePacket(struct rxi_bulkrecv *bulkrecv, struct rx_packet *np,
 
     /* Reset our conn and/or call if they don't match the given packet. */
     if (conn && !packet_matches_conn(conn, type, np, host, port)) {
+	MUTEX_EXIT(&conn->conn_recv_lock);
 	putConnection(conn);
 	conn = NULL;
     }
@@ -3783,15 +3789,17 @@ rxi_BulkReceivePacket(struct rxi_bulkrecv *bulkrecv, struct rx_packet *np,
 	    rxi_FindConnection(socket, host, port, np->header.serviceId,
 			       np->header.cid, np->header.epoch, type,
 			       np->header.securityIndex, &unknownService);
-    }
 
-    /* To avoid having 2 connections just abort at each other,
-       don't abort an abort. */
-    if (!conn) {
-        if (unknownService && (np->header.type != RX_PACKET_TYPE_ABORT))
-	    rxi_SendRawAbort(socket, host, port, 0, RX_INVALID_OPERATION,
-                             np, 0);
-        goto done;
+	/* To avoid having 2 connections just abort at each other,
+	   don't abort an abort. */
+	if (!conn) {
+	    if (unknownService && (np->header.type != RX_PACKET_TYPE_ABORT))
+		rxi_SendRawAbort(socket, host, port, 0, RX_INVALID_OPERATION,
+				 np, 0);
+	    goto done;
+	}
+
+	MUTEX_ENTER(&conn->conn_recv_lock);
     }
 
 #ifdef AFS_RXERRQ_ENV

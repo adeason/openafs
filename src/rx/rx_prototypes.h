@@ -171,6 +171,10 @@ extern afs_int32 rx_SetSecurityConfiguration(struct rx_service *service,
 extern int rx_GetThreadNum(void);
 extern int rx_SetThreadNum(void);
 
+#ifdef AFS_PTHREAD_ENV
+extern int rx_SetListenerThreads(int nthreads);
+#endif
+
 void rxi_DebugInit(void);
 void rxi_DebugPrint(char *format, ...)
     AFS_ATTRIBUTE_FORMAT(__printf__, 1, 2);
