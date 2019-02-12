@@ -37,6 +37,19 @@ of the threads for its own purposes).
 The maximum number of threads can differ in each release of OpenAFS.
 Consult the I<OpenAFS Release Notes> for the current release.
 
+=item B<-rxl> <I<number of rx listener threads>>
+
+Sets the number of threads to run that are used for receiving packets from the
+wire. Raising this can improve performance for heavily-loaded fileservers on
+machines with multiple CPU cores.
+
+Note that these threads are unrelated to the processes specified by B<-p>. The
+threads specified by B<-rxl> are created in addition to those created for
+B<-p>.
+
+You must specify a number between C<1> and C<1024>, inclusive. The default is
+C<4>; if B<-S> is given, then the default is C<1>.
+
 =item B<-spare> <I<number of spare blocks>>
 
 Specifies the number of additional kilobytes an application can store in a

@@ -165,6 +165,7 @@ int saneacls = 0;		/* Sane ACLs Flag */
 static int unsafe_attach = 0;   /* avoid inUse check on vol attach? */
 static int offline_timeout = -1; /* -offline-timeout option */
 static int offline_shutdown_timeout = -1; /* -offline-shutdown-timeout option */
+static int rxl_threads = 4;     /* # of rx listener threads */
 
 struct timeval tp;
 
@@ -945,7 +946,8 @@ enum optionsList {
     OPT_dotted,
     OPT_realm,
     OPT_sync,
-    OPT_transarc_logs
+    OPT_transarc_logs,
+    OPT_rxl
 };
 
 static int
@@ -1113,6 +1115,8 @@ ParseArgs(int argc, char *argv[])
 			CMD_OPTIONAL, "maximum MTU for RX");
     cmd_AddParmAtOffset(opts, OPT_udpsize, "-udpsize", CMD_SINGLE,
 			CMD_OPTIONAL, "size of socket buffer in bytes");
+    cmd_AddParmAtOffset(opts, OPT_rxl, "-rxl", CMD_SINGLE,
+			CMD_OPTIONAL, "number of rx listener threads");
 
     /* rxkad options */
     cmd_AddParmAtOffset(opts, OPT_dotted, "-allow-dotted-principals",
@@ -1169,6 +1173,7 @@ ParseArgs(int argc, char *argv[])
 	lwps = 6;
 	buffs = 70;
 	volcache = 200;
+	rxl_threads = 1;
     }
 
     cmd_OptionAsFlag(opts, OPT_banner, &printBanner);
@@ -1399,6 +1404,8 @@ ParseArgs(int argc, char *argv[])
 	} else
 	    udpBufSize = optval;
     }
+
+    cmd_OptionAsInt(opts, OPT_rxl, &rxl_threads);
 
     /* rxkad options */
     cmd_OptionAsFlag(opts, OPT_dotted, &rxkadDisableDotCheck);
@@ -2003,6 +2010,14 @@ main(int argc, char *argv[])
 #endif
     if (udpBufSize)
 	rx_SetUdpBufSize(udpBufSize);	/* set the UDP buffer size for receive */
+
+    code = rx_SetListenerThreads(rxl_threads);
+    if (code) {
+	ViceLog(0, ("Error setting rxlistener threads to %d (error %d)\n",
+	        rxl_threads, code));
+	exit(1);
+    }
+
     rx_bindhost = SetupVL();
 
     if (rx_InitHost(rx_bindhost, (int)htons(7000)) < 0) {
