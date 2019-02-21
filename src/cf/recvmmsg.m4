@@ -1,5 +1,5 @@
 dnl This checks if recvmmsg() is available (note the extra 'm'), along with the
-dnl MSG_WAITFORONE flag
+dnl MSG_WAITFORONE flag, and sendmmsg().
 AC_DEFUN([OPENAFS_FUNC_RECVMMSG],
  [AS_CASE([$AFS_SYSNAME],
    [sun4x_511|sunx86_511],
@@ -24,10 +24,11 @@ AC_DEFUN([OPENAFS_FUNC_RECVMMSG],
         int sock = 0;
         struct mmsghdr msgvec;
         struct timespec timeo;
-        code = recvmmsg(sock, &msgvec, 1, MSG_WAITFORONE, &timeo);]])],
+        code = recvmmsg(sock, &msgvec, 1, MSG_WAITFORONE, &timeo);
+        code = sendmmsg(sock, &msgvec, 1, 0);]])],
     [ac_cv_openafs_func_recvmmsg=yes],
     [ac_cv_openafs_func_recvmmsg=no])])
 
   AS_IF([test x"$ac_cv_openafs_func_recvmmsg" = xyes],
    [AC_DEFINE([HAVE_RECVMMSG], [1],
-     [define if recvmmsg() is available with MSG_WAITFORONE])])])
+     [define if sendmmsg(), recvmmsg(), and MSG_WAITFORONE are available])])])

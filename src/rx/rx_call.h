@@ -146,6 +146,10 @@ struct rx_call {
 
     struct rx_packet *xmitList[RX_MAXACKS]; /* Can't xmit more than we ack */
                                 /* Protected by setting RX_CALL_TQ_BUSY */
+#ifdef AFS_RX_RECVMMSG_ENV
+    struct rxi_xmit_dgramlist xmitDgramList; /* dgrams for sendmmsg()
+                                              * (protected by setting RX_CALL_TQ_BUSY) */
+#endif
 #ifdef RXDEBUG_PACKET
     u_short tqc;                /* packet count in tq */
     u_short rqc;                /* packet count in rq */

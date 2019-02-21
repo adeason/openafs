@@ -19,12 +19,27 @@
 
 #ifdef AFS_RX_RECVMMSG_ENV
 typedef struct mmsghdr rxi_mmsghdr;
-#else
+
+# define RXI_XMIT_DGRAM_MAX 64
+struct rxi_xmit_dgramlist {
+    /* msg header array given to sendmmsg() */
+    rxi_mmsghdr msgList[RXI_XMIT_DGRAM_MAX];
+
+    /* current msgList index */
+    unsigned short msgCur;
+
+    /* max number of msgList entries valid for this xmit */
+    unsigned short msgLen;
+};
+
+#else /* AFS_RX_RECVMMSG_ENV */
+
 struct rxi_mmsghdr_s {
     struct msghdr msg_hdr;
     unsigned int msg_len;
 };
 typedef struct rxi_mmsghdr_s rxi_mmsghdr;
+
 #endif /* !AFS_RX_RECVMMSG_ENV */
 
 /* Globals that we don't want the world to know about */
@@ -108,3 +123,15 @@ extern void rxi_ReceivePacketList(osi_socket socket, struct rxi_recvlist *rlist,
 extern int rxi_RecvmsgList(osi_socket socket, rxi_mmsghdr *msgs, int len);
 #endif
 
+#ifdef AFS_RX_RECVMMSG_ENV
+extern void rxi_BulkSendStart(struct rxi_xmit_dgramlist *dgramlist, int len);
+extern int rxi_BulkSendEnd(struct rxi_xmit_dgramlist *dgramlist, osi_socket sock);
+extern int rxi_BulkSendDgram(struct rxi_xmit_dgramlist *dgramlist, osi_socket sock,
+                             struct sockaddr_in *addr, struct iovec *dvec,
+                             int nvecs, int length, int istack);
+#else
+# define rxi_BulkSendStart(dgramlist, len) do { } while (0)
+# define rxi_BulkSendEnd(dgramlist, sock) (0)
+# define rxi_BulkSendDgram(dgramlist, sock,   addr,   dvec,   nvecs,   length,   istack) \
+                         osi_NetSend((sock), (addr), (dvec), (nvecs), (length), (istack))
+#endif

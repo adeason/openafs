@@ -2268,6 +2268,13 @@ rxi_SendPacketDgrams(struct rx_call *call, struct rx_connection *conn,
     addr.sin_addr.s_addr = peer->host;
     memset(&addr.sin_zero, 0, sizeof(addr.sin_zero));
 
+    if (len < 2) {
+        /* Don't bother "bulk" sending dgrams if we only have 1. */
+        dgramlist = NULL;
+    }
+
+    rxi_BulkSendStart(dgramlist, len);
+
     /* This stuff should be revamped, I think, so that most, if not
      * all, of the header stuff is always added here.  We could
      * probably do away with the encode/decode routines. XXXXX */
@@ -2355,9 +2362,10 @@ rxi_SendPacketDgrams(struct rx_call *call, struct rx_connection *conn,
                 AFS_GUNLOCK();
 #endif
 #endif
-	    if ((code =
-		 osi_NetSend(socket, &addr, p->wirevec, p->niovecs,
-			     p->length + RX_HEADER_SIZE, istack)) != 0) {
+	    code = rxi_BulkSendDgram(dgramlist, socket, &addr, p->wirevec,
+	                             p->niovecs, p->length + RX_HEADER_SIZE,
+	                             istack);
+	    if (code != 0) {
 		/* send failed, so let's hurry up the resend, eh? */
 		if (rx_stats_active)
 		    rx_atomic_inc(&rx_stats.netSendFailures);
@@ -2393,6 +2401,20 @@ rxi_SendPacketDgrams(struct rx_call *call, struct rx_connection *conn,
 	      ntohs(peer->port), p->header.serial, p->header.epoch, p->header.cid, p->header.callNumber,
 	      p->header.seq, p->header.flags, p, p->length));
 #endif
+    }
+    code = rxi_BulkSendEnd(dgramlist, socket);
+    if (code) {
+        /* Send failed for the _entire_ bulk send. So assume all of the packets
+         * failed. */
+        if (rx_stats_active)
+            rx_atomic_inc(&rx_stats.netSendFailures);
+        for (pkt_i = 0; pkt_i < len; pkt_i++) {
+            struct rx_packet *p = list[pkt_i];
+            p->flags &= ~RX_PKTFLAG_SENT; /* resend it very soon */
+        }
+        if (call) {
+            rxi_NetSendError(call, code);
+        }
     }
     if (rx_stats_active) {
         afs_uint32 length = 0;

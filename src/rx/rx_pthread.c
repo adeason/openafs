@@ -535,4 +535,120 @@ rx_SetThreadNum(void) {
     return threadId;
 }
 
+#ifdef AFS_RX_RECVMMSG_ENV
+/* Our routines for "bulk" sends via sendmmsg. */
+
+void
+rxi_BulkSendStart(struct rxi_xmit_dgramlist *dgramlist, int len)
+{
+    if (!dgramlist) {
+        return;
+    }
+
+    if (len > RXI_XMIT_DGRAM_MAX) {
+        /* We can't sendmmsg() more than RXI_XMIT_DGRAM_MAX dgrams at once. */
+        len = RXI_XMIT_DGRAM_MAX;
+    }
+
+    dgramlist->msgCur = 0;
+    dgramlist->msgLen = len;
+}
+
+static int
+bulk_flush(struct rxi_xmit_dgramlist *dgramlist, osi_socket sock)
+{
+    int n_sent = 0;
+    rxi_mmsghdr *msgs;
+    int len;
+    int code;
+
+    msgs = dgramlist->msgList;
+    len = dgramlist->msgCur;
+
+    /*
+     * sendmmsg can send all of the given messages, or none, or some of them.
+     * If we only send some of the messages, retry the send but only sending
+     * the unsent messages. Do this repeatedly until we've either sent
+     * everything, or until we get an error.
+     *
+     * This means that on error, we effectively report an error for the entire
+     * list of "bulk send" packets. That is unfortunate, but should not be a
+     * problem, since we only send packets "in bulk" to the same peer anyway;
+     * it would be odd to get an error just on some packets but not others.
+     */
+    while (n_sent < len) {
+        code = sendmmsg(sock, &msgs[n_sent], len - n_sent, 0);
+        if (code < 0) {
+            goto done;
+        }
+        n_sent += code;
+        if (code == 0) {
+            /* Just in case... */
+            errno = EIO;
+            code = -1;
+            goto done;
+        }
+    }
+    code = 0;
+
+ done:
+    dgramlist->msgCur = 0;
+    return code;
+}
+
+int
+rxi_BulkSendDgram(struct rxi_xmit_dgramlist *dgramlist, osi_socket sock,
+                  struct sockaddr_in *addr, struct iovec *dvec, int nvecs,
+                  int length, int istack)
+{
+    struct msghdr *msg;
+    rxi_mmsghdr *mhdr;
+
+    if (!dgramlist) {
+        return osi_NetSend(sock, addr, dvec, nvecs, length, istack);
+    }
+
+    osi_Assert(dgramlist->msgCur < dgramlist->msgLen);
+
+    mhdr = &dgramlist->msgList[dgramlist->msgCur];
+    memset(mhdr, 0, sizeof(*mhdr));
+
+    msg = &mhdr->msg_hdr;
+    msg->msg_iov = dvec;
+    msg->msg_iovlen = nvecs;
+    msg->msg_name = addr;
+    msg->msg_namelen = sizeof(*addr);
+
+    dgramlist->msgCur++;
+    if (dgramlist->msgCur >= dgramlist->msgLen) {
+        /* The dgramlist is full; send the packets. If we encounter an error
+         * while sending, we'll return an error, which only indicates an error
+         * sending the _current_ packet to the caller. This is suboptimal, but
+         * does not result in _incorrect_ behavior, and we currently cannot
+         * fill up the dgramlist anyway, so this is not a concern for now. */
+        return bulk_flush(dgramlist, sock);
+    }
+
+    return 0;
+}
+
+int
+rxi_BulkSendEnd(struct rxi_xmit_dgramlist *dgramlist, osi_socket sock)
+{
+    int code;
+
+    if (!dgramlist) {
+        return 0;
+    }
+
+    code = bulk_flush(dgramlist, sock);
+
+    /* Make it clear the dgramlist is not valid until someone calls
+     * rxi_BulkSendStart again. */
+    dgramlist->msgLen = 0;
+
+    return code;
+}
+#endif /* AFS_RX_RECVMMSG_ENV */
+
 #endif

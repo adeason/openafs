@@ -5963,6 +5963,14 @@ rxi_SendList(struct rx_call *call, struct xmitlist *xmit,
     }
     if ((flags & RXI_SENDLIST_DGRAMS)) {
         dgrams = 1;
+
+#ifdef AFS_RX_RECVMMSG_ENV
+        /* We're about to use call->xmitDgramList while the call is unlocked
+         * (below). This is protected by RX_CALL_TQ_BUSY instead of the call
+         * lock, so we had better have RX_CALL_TQ_BUSY set. */
+        osi_Assert((call->flags & RX_CALL_TQ_BUSY));
+        dgramlist = &call->xmitDgramList;
+#endif
     }
 
     MUTEX_ENTER(&peer->peer_lock);
