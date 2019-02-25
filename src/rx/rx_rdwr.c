@@ -704,8 +704,7 @@ rxi_WriteProc(struct rx_call *call, char *buf,
 #ifdef RX_ENABLE_LOCKS
 	    if (call->error) {
 		call->app.mode = RX_MODE_ERROR;
-		MUTEX_EXIT(&call->lock);
-		return 0;
+		goto error;
 	    }
 #endif /* RX_ENABLE_LOCKS */
 	    if ((call->app.currentPacket = rxi_AllocSendPacket(call, nbytes))) {
@@ -732,8 +731,7 @@ rxi_WriteProc(struct rx_call *call, char *buf,
 		    rxi_FreePacket(call->app.currentPacket);
 		    call->app.currentPacket = NULL;
 		}
-		MUTEX_EXIT(&call->lock);
-		return 0;
+		goto error;
 	    }
 	    MUTEX_EXIT(&call->lock);
 	}
@@ -786,16 +784,13 @@ rxi_WriteProc(struct rx_call *call, char *buf,
 		}
 	    }
 	}			/* while bytes to send and room to send them */
-
-	/* might be out of space now */
-	if (!nbytes) {
-	    return requestCount;
-	} else {
-	    /* more data to send, so get another packet and keep going */
-	}
     } while (nbytes);
 
     return requestCount - nbytes;
+
+ error:
+    MUTEX_EXIT(&call->lock);
+    return 0;
 }
 
 int
@@ -1071,7 +1066,7 @@ rxi_WritevProc(struct rx_call *call, struct iovec *iov, int nio, int nbytes)
         call->iovqc -=
 #endif /* RXDEBUG_PACKET */
             rxi_FreePackets(0, &call->app.iovq);
-	return 0;
+	goto error;
     }
 
     /* Loop through the I/O vector adjusting packet pointers.
@@ -1109,7 +1104,7 @@ rxi_WritevProc(struct rx_call *call, struct iovec *iov, int nio, int nbytes)
                     tmpqc -=
 #endif /* RXDEBUG_PACKET */
                         rxi_FreePackets(0, &tmpq);
-		    return 0;
+		    goto error;
 		}
 		call->app.currentPacket
 			= opr_queue_First(&call->app.iovq, struct rx_packet,
@@ -1154,7 +1149,7 @@ rxi_WritevProc(struct rx_call *call, struct iovec *iov, int nio, int nbytes)
                 tmpqc -=
 #endif /* RXDEBUG_PACKET */
                     rxi_FreePackets(0, &tmpq);
-		return 0;
+		goto error;
 	    }
 	    nbytes -= iov[nextio].iov_len;
 	    call->app.curpos += iov[nextio].iov_len;
@@ -1209,11 +1204,14 @@ rxi_WritevProc(struct rx_call *call, struct iovec *iov, int nio, int nbytes)
 #endif
 	    rxi_FreePacket(call->app.currentPacket);
 	}
-	return 0;
+	goto error;
     }
     MUTEX_EXIT(&call->lock);
 
     return requestCount - nbytes;
+
+ error:
+    return 0;
 }
 
 int
