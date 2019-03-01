@@ -173,6 +173,9 @@ extern u_short rx_PortOf(struct rx_peer *peer);
 /* 0x20000 was RX_CALL_PEER_BUSY */
 #define RX_CALL_ACKALL_SENT     0x40000 /* ACKALL has been sent on the call */
 #define RX_CALL_FLUSH		0x80000 /* Transmit queue should be flushed to peer */
+#define RX_CALL_DEFER_RXISTART 0x100000 /* defer rxi_Start calls on this call
+                                         * until rxi_StartIfDeferred is called. */
+#define RX_CALL_NEEDS_RXISTART 0x200000 /* an rxi_Start call has been deferred */
 #endif
 
 

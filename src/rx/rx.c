@@ -4924,7 +4924,7 @@ rxi_ReceiveAckPacket(struct rx_call *call, struct rx_packet *np,
 	rxi_ClearTransmitQueue(call, 0);
 	rxi_CancelKeepAliveEvent(call);
     } else if (!opr_queue_IsEmpty(&call->tq)) {
-	rxi_Start(call, istack);
+	rxi_StartDefer(call, istack);
     }
     return np;
 }
@@ -6351,6 +6351,10 @@ rxi_Start(struct rx_call *call, int istack)
     int nXmitPackets;
     int maxXmitPackets;
 
+    if ((call->flags & RX_CALL_NEEDS_RXISTART)) {
+	call->flags &= ~RX_CALL_NEEDS_RXISTART;
+    }
+
     if (call->error) {
 #ifdef RX_ENABLE_LOCKS
         if (rx_stats_active)
@@ -6491,6 +6495,42 @@ rxi_Start(struct rx_call *call, int istack)
 #endif /* RX_ENABLE_LOCKS */
     } else {
 	rxi_rto_cancel(call);
+    }
+}
+
+/*
+ * Call rxi_Start if a previous rxi_Start call has been deferred (that is, if
+ * RX_CALL_NEEDS_RXISTART has been set on the call).
+ */
+void
+rxi_StartIfDeferred(struct rx_call* call, int istack)
+{
+    while (!call->error && (call->flags & RX_CALL_NEEDS_RXISTART)) {
+        rxi_Start(call, istack);
+    }
+}
+
+/*
+ * Call rxi_Start, unless the call indicates we should defer calls to rxi_Start
+ * until later (that is, if RX_CALL_DEFER_RXISTART is set on the call). If
+ * we're supposed to defer rxi_Start calls, then just set
+ * RX_CALL_NEEDS_RXISTART on the call.
+ */
+void
+rxi_StartDefer(struct rx_call *call, int istack)
+{
+    if (!(call->flags & RX_CALL_DEFER_RXISTART)) {
+        rxi_Start(call, istack);
+        return;
+    }
+
+    if (!(call->flags & RX_CALL_NEEDS_RXISTART)) {
+        call->flags |= RX_CALL_NEEDS_RXISTART;
+#ifdef	RX_ENABLE_LOCKS
+        CV_SIGNAL(&call->cv_twind);
+#else
+        osi_rxWakeup(&call->twind);
+#endif
     }
 }
 

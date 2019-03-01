@@ -600,10 +600,16 @@ rxi_TransmitQueueIsTooFull(struct rx_call *call)
 static void
 rxi_WaitForTransmitWindow(struct rx_call *call)
 {
-    while (!call->error && rxi_TransmitQueueIsTooFull(call)) {
-        clock_NewTime();
-        call->startWait = clock_Sec();
+    if (call->error || !rxi_TransmitQueueIsTooFull(call)) {
+        return;
+    }
 
+    rxi_StartIfDeferred(call, 0);
+
+    clock_NewTime();
+    call->startWait = clock_Sec();
+
+    while (!call->error && rxi_TransmitQueueIsTooFull(call)) {
 #ifdef	RX_ENABLE_LOCKS
         CV_WAIT(&call->cv_twind, &call->lock);
 #else
@@ -611,9 +617,26 @@ rxi_WaitForTransmitWindow(struct rx_call *call)
         osi_rxSleep(&call->twind);
 #endif
 
-        call->startWait = 0;
+        rxi_StartIfDeferred(call, 0);
     }
+
+    call->startWait = 0;
 }
+
+/* If 'do_deferred_rxistart' is set, we will set the RX_CALL_DEFER_RXISTART flag on
+ * the call while running rxi_WriteProc/rxi_WritevProc. This indicates that
+ * calls to rxi_StartDefer (like those in the listener thread) will be "deferred"
+ * until we call rxi_StartIfDeferred here in the application thread, which
+ * happens when we're woken up via cv_twind.
+ *
+ * We don't do this for LWP, since we are single-threaded and thus do not gain
+ * the benefits of shifting rxi_Start calls from the listener thread to
+ * application threads. */
+#if defined(AFS_PTHREAD_ENV) || defined(KERNEL)
+static const int do_deferred_rxistart = 1;
+#else
+static const int do_deferred_rxistart = 0;
+#endif
 
 /* rxi_WriteProc -- internal version.
  *
@@ -626,6 +649,7 @@ rxi_WriteProc(struct rx_call *call, char *buf,
 {
     struct rx_connection *conn = call->conn;
     unsigned int t;
+    int defer_set = 0;
     int requestCount = nbytes;
 
     /* Free any packets from the last call to ReadvProc/WritevProc */
@@ -661,6 +685,12 @@ rxi_WriteProc(struct rx_call *call, char *buf,
     do {
 	if (call->app.nFree == 0) {
 	    MUTEX_ENTER(&call->lock);
+
+            if (do_deferred_rxistart) {
+                call->flags |= RX_CALL_DEFER_RXISTART;
+                defer_set = 1;
+            }
+
             if (call->error)
                 call->app.mode = RX_MODE_ERROR;
 	    if (!call->error && call->app.currentPacket) {
@@ -690,7 +720,7 @@ rxi_WriteProc(struct rx_call *call, char *buf,
 		 * retransmit queue before forcing it to send new packets
 		 */
 		if (!(call->flags & (RX_CALL_FAST_RECOVER))) {
-		    rxi_Start(call, 0);
+		    rxi_StartDefer(call, 0);
 		}
 	    } else if (call->app.currentPacket) {
 #ifdef RX_TRACK_PACKETS
@@ -786,9 +816,19 @@ rxi_WriteProc(struct rx_call *call, char *buf,
 	}			/* while bytes to send and room to send them */
     } while (nbytes);
 
+    if (defer_set) {
+        MUTEX_ENTER(&call->lock);
+        call->flags &= ~RX_CALL_DEFER_RXISTART;
+        rxi_StartIfDeferred(call, 0);
+        MUTEX_EXIT(&call->lock);
+    }
+
     return requestCount - nbytes;
 
  error:
+    if (defer_set) {
+        call->flags &= ~RX_CALL_DEFER_RXISTART;
+    }
     MUTEX_EXIT(&call->lock);
     return 0;
 }
@@ -1033,6 +1073,7 @@ rxi_WritevProc(struct rx_call *call, struct iovec *iov, int nio, int nbytes)
     int nextio = 0;
     int requestCount;
     struct opr_queue tmpq;
+    int defer_set = 0;
 #ifdef RXDEBUG_PACKET
     u_short tmpqc;
 #endif
@@ -1067,6 +1108,11 @@ rxi_WritevProc(struct rx_call *call, struct iovec *iov, int nio, int nbytes)
 #endif /* RXDEBUG_PACKET */
             rxi_FreePackets(0, &call->app.iovq);
 	goto error;
+    }
+
+    if (do_deferred_rxistart) {
+        call->flags |= RX_CALL_DEFER_RXISTART;
+        defer_set = 1;
     }
 
     /* Loop through the I/O vector adjusting packet pointers.
@@ -1188,11 +1234,16 @@ rxi_WritevProc(struct rx_call *call, struct iovec *iov, int nio, int nbytes)
      * queue before forcing it to send new packets
      */
     if (!(call->flags & RX_CALL_FAST_RECOVER)) {
-	rxi_Start(call, 0);
+	rxi_StartDefer(call, 0);
     }
 
     /* Wait for the length of the transmit queue to fall below call->twind */
     rxi_WaitForTransmitWindow(call);
+
+    if (defer_set) {
+        call->flags &= ~RX_CALL_DEFER_RXISTART;
+        rxi_StartIfDeferred(call, 0);
+    }
 
     if (call->error) {
         call->app.mode = RX_MODE_ERROR;
@@ -1211,6 +1262,11 @@ rxi_WritevProc(struct rx_call *call, struct iovec *iov, int nio, int nbytes)
     return requestCount - nbytes;
 
  error:
+    if (defer_set) {
+        MUTEX_ENTER(&call->lock);
+        call->flags &= ~RX_CALL_DEFER_RXISTART;
+        MUTEX_EXIT(&call->lock);
+    }
     return 0;
 }
 

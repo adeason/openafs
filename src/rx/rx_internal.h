@@ -68,6 +68,8 @@ extern int rxi_IsConnInteresting(struct rx_connection *aconn);
 extern void rxi_PostDelayedAckEvent(struct rx_call *call, struct clock *now);
 extern void rxi_ConnectionError(struct rx_connection *conn, afs_int32 error);
 extern void rxi_Start(struct rx_call *call, int istack);
+extern void rxi_StartIfDeferred(struct rx_call *call, int istack);
+extern void rxi_StartDefer(struct rx_call *call, int istack);
 extern void rxi_Send(struct rx_call *call, struct rx_packet *p, int istack);
 extern struct rx_packet *rxi_SendAck(struct rx_call *call,
 				     struct rx_packet *optionalPacket,
