@@ -3018,7 +3018,7 @@ rxi_RecvListFree(struct rxi_recvlist **a_rlist)
     *a_rlist = NULL;
 }
 
-static const int rxi_RecvAtOnce = 1;
+static const int rxi_RecvAtOnce = 1024;
 struct rxi_recvlist *
 rxi_RecvListAlloc(void)
 {

@@ -13,11 +13,19 @@
 # endif
 #endif
 
+#if defined(HAVE_RECVMMSG) && !defined(KERNEL) && defined(AFS_PTHREAD_ENV)
+# define AFS_RX_RECVMMSG_ENV
+#endif
+
+#ifdef AFS_RX_RECVMMSG_ENV
+typedef struct mmsghdr rxi_mmsghdr;
+#else
 struct rxi_mmsghdr_s {
     struct msghdr msg_hdr;
     unsigned int msg_len;
 };
 typedef struct rxi_mmsghdr_s rxi_mmsghdr;
+#endif /* !AFS_RX_RECVMMSG_ENV */
 
 /* Globals that we don't want the world to know about */
 extern rx_atomic_t rx_nWaiting;

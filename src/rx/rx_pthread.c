@@ -405,6 +405,17 @@ rxi_Recvmsg(osi_socket socket, struct msghdr *msg_p, int flags)
     return ret;
 }
 
+#ifdef AFS_RX_RECVMMSG_ENV
+int
+rxi_RecvmsgList(osi_socket socket, rxi_mmsghdr *msgs, int len)
+{
+# ifdef AFS_RXERRQ_ENV
+    while (rxi_HandleSocketError(socket) > 0)
+        ;
+# endif
+    return recvmmsg(socket, msgs, len, MSG_WAITFORONE, NULL);
+}
+#else
 /* recvmmsg (emulated). Receive multiple packets from the given socket. We
  * emulate recvmmsg(MSG_WAITFORONE) behavior here; that is, block waiting for
  * the first packet, and then do a nonblocking recvmsg on the rest. */
@@ -414,10 +425,10 @@ rxi_RecvmsgList(osi_socket socket, rxi_mmsghdr *msgs, int len)
     int flags = 0;
     int n_recvd = 0;
 
-#ifdef AFS_RXERRQ_ENV
+# ifdef AFS_RXERRQ_ENV
     while (rxi_HandleSocketError(socket) > 0)
         ;
-#endif
+# endif
 
     if (len < 1) {
         errno = EINVAL;
@@ -448,6 +459,7 @@ rxi_RecvmsgList(osi_socket socket, rxi_mmsghdr *msgs, int len)
  done:
     return n_recvd;
 }
+#endif /* !AFS_RX_RECVMMSG_ENV */
 
 /*
  * Sendmsg.
