@@ -137,3 +137,10 @@ extern int rxi_BulkSendDgram(struct rxi_xmit_dgramlist *dgramlist, osi_socket so
 # define rxi_BulkSendDgram(dgramlist, sock,   addr,   dvec,   nvecs,   length,   istack) \
                          osi_NetSend((sock), (addr), (dvec), (nvecs), (length), (istack))
 #endif
+
+/* rx_user.c */
+
+#ifndef KERNEL
+extern int rxi_BindSocket(osi_socket *a_socketFd, struct sockaddr *addr,
+                          size_t addrlen);
+#endif

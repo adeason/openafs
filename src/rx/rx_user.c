@@ -80,20 +80,27 @@ afs_kmutex_t rx_if_mutex;
 #define UNLOCK_IF
 #endif /* AFS_PTHREAD_ENV */
 
-
-/*
- * Make a socket for receiving/sending IP packets.  Set it into non-blocking
- * and large buffering modes.  If port isn't specified, the kernel will pick
- * one.  Returns the socket (>= 0) on success.  Returns OSI_NULLSOCKET on
- * failure. Port must be in network byte order.
- */
-osi_socket
-rxi_GetHostUDPSocket(u_int ahost, u_short port)
+static void
+rxi_CloseSocket(osi_socket *a_socketFd)
 {
-    int binds, code = 0;
-    osi_socket socketFd = OSI_NULLSOCKET;
-    struct sockaddr_in taddr;
+    osi_socket socketFd = *a_socketFd;
+    if (socketFd == OSI_NULLSOCKET) {
+        return;
+    }
+#ifdef AFS_NT40_ENV
+    closesocket(socketFd);
+#else
+    close(socketFd);
+#endif
+    *a_socketFd = OSI_NULLSOCKET;
+}
+
+int
+rxi_BindSocket(osi_socket *a_socketFd, struct sockaddr *addr, size_t addrlen)
+{
     char *name = "rxi_GetUDPSocket: ";
+    int binds, code = 0;
+    osi_socket socketFd;
 #ifdef AFS_LINUX22_ENV
 # if defined(AFS_ADAPT_PMTU)
     int pmtu = IP_PMTUDISC_WANT;
@@ -102,20 +109,8 @@ rxi_GetHostUDPSocket(u_int ahost, u_short port)
 # endif
 #endif
 
-#if !defined(AFS_NT40_ENV)
-    if (ntohs(port) >= IPPORT_RESERVED && ntohs(port) < IPPORT_USERRESERVED) {
-/*	(osi_Msg "%s*WARNING* port number %d is not a reserved port number.  Use port numbers above %d\n", name, port, IPPORT_USERRESERVED);
-*/ ;
-    }
-    if (ntohs(port) > 0 && ntohs(port) < IPPORT_RESERVED && geteuid() != 0) {
-	(osi_Msg
-	 "%sport number %d is a reserved port number which may only be used by root.  Use port numbers above %d\n",
-	 name, ntohs(port), IPPORT_USERRESERVED);
-	goto error;
-    }
-#endif
     socketFd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-
+    *a_socketFd = socketFd;
     if (socketFd == OSI_NULLSOCKET) {
 #ifdef AFS_NT40_ENV
         fprintf(stderr, "socket() failed with error %u\n", WSAGetLastError());
@@ -129,18 +124,11 @@ rxi_GetHostUDPSocket(u_int ahost, u_short port)
     rxi_xmit_init(socketFd);
 #endif /* AFS_NT40_ENV */
 
-    taddr.sin_addr.s_addr = ahost;
-    taddr.sin_family = AF_INET;
-    taddr.sin_port = (u_short) port;
-    memset(&taddr.sin_zero, 0, sizeof(taddr.sin_zero));
-#ifdef STRUCT_SOCKADDR_HAS_SA_LEN
-    taddr.sin_len = sizeof(struct sockaddr_in);
-#endif
 #define MAX_RX_BINDS 10
     for (binds = 0; binds < MAX_RX_BINDS; binds++) {
 	if (binds)
 	    rxi_Delay(10);
-	code = bind(socketFd, (struct sockaddr *)&taddr, sizeof(taddr));
+	code = bind(socketFd, addr, addrlen);
         break;
     }
     if (code) {
@@ -206,6 +194,53 @@ rxi_GetHostUDPSocket(u_int ahost, u_short port)
 	setsockopt(socketFd, SOL_IP, IP_RECVERR, &recverr, sizeof(recverr));
     }
 #endif
+    return 0;
+
+ error:
+    rxi_CloseSocket(a_socketFd);
+    return -1;
+}
+
+/*
+ * Make a socket for receiving/sending IP packets.  Set it into non-blocking
+ * and large buffering modes.  If port isn't specified, the kernel will pick
+ * one.  Returns the socket (>= 0) on success.  Returns OSI_NULLSOCKET on
+ * failure. Port must be in network byte order.
+ */
+osi_socket
+rxi_GetHostUDPSocket(u_int ahost, u_short port)
+{
+    int code = 0;
+    osi_socket socketFd = OSI_NULLSOCKET;
+    struct sockaddr_in taddr;
+    char *name = "rxi_GetUDPSocket: ";
+
+#if !defined(AFS_NT40_ENV)
+    if (ntohs(port) >= IPPORT_RESERVED && ntohs(port) < IPPORT_USERRESERVED) {
+/*	(osi_Msg "%s*WARNING* port number %d is not a reserved port number.  Use port numbers above %d\n", name, port, IPPORT_USERRESERVED);
+*/ ;
+    }
+    if (ntohs(port) > 0 && ntohs(port) < IPPORT_RESERVED && geteuid() != 0) {
+	(osi_Msg
+	 "%sport number %d is a reserved port number which may only be used by root.  Use port numbers above %d\n",
+	 name, ntohs(port), IPPORT_USERRESERVED);
+	goto error;
+    }
+#endif
+
+    taddr.sin_addr.s_addr = ahost;
+    taddr.sin_family = AF_INET;
+    taddr.sin_port = (u_short) port;
+    memset(&taddr.sin_zero, 0, sizeof(taddr.sin_zero));
+#ifdef STRUCT_SOCKADDR_HAS_SA_LEN
+    taddr.sin_len = sizeof(taddr);
+#endif
+
+    code = rxi_BindSocket(&socketFd, (struct sockaddr *)&taddr, sizeof(taddr));
+    if (code) {
+        goto error;
+    }
+
     if (rxi_Listen(socketFd) < 0) {
 	goto error;
     }
@@ -213,14 +248,7 @@ rxi_GetHostUDPSocket(u_int ahost, u_short port)
     return socketFd;
 
   error:
-#ifdef AFS_NT40_ENV
-    if (socketFd != OSI_NULLSOCKET)
-	closesocket(socketFd);
-#else
-    if (socketFd != OSI_NULLSOCKET)
-	close(socketFd);
-#endif
-
+    rxi_CloseSocket(&socketFd);
     return OSI_NULLSOCKET;
 }
 
@@ -734,11 +762,7 @@ rxi_InitPeerParams(struct rx_peer *pp)
                 pp->ifMTU = MIN(mtu - RX_IPUDP_SIZE, pp->ifMTU);
             }
         }
-# ifdef AFS_NT40_ENV
-        closesocket(sock);
-# else
-        close(sock);
-# endif
+        rxi_CloseSocket(&sock);
     }
 #endif
     pp->ifMTU = rxi_AdjustIfMTU(pp->ifMTU);
