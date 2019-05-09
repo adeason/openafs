@@ -96,7 +96,7 @@ rxi_CloseSocket(osi_socket *a_socketFd)
 }
 
 int
-rxi_BindSocket(osi_socket *a_socketFd, struct sockaddr *addr, size_t addrlen)
+rxi_BindSocket(osi_socket *a_socketFd, struct sockaddr *addr, size_t addrlen, int reuseport)
 {
     char *name = "rxi_GetUDPSocket: ";
     int binds, code = 0;
@@ -119,6 +119,17 @@ rxi_BindSocket(osi_socket *a_socketFd, struct sockaddr *addr, size_t addrlen)
 #endif
 	goto error;
     }
+
+#ifdef AFS_RX_REUSEPORT_ENV
+    if (reuseport) {
+	int turn_on = 1;
+	code = setsockopt(socketFd, SOL_SOCKET, SO_REUSEPORT, &turn_on, sizeof(turn_on));
+	if (code) {
+	    (osi_Msg "%ssetsockopt(SO_REUSEPORT) failed\n", name);
+	    goto error;
+	}
+    }
+#endif /* AFS_RX_REUSEPORT_ENV */
 
 #ifdef AFS_NT40_ENV
     rxi_xmit_init(socketFd);
@@ -236,10 +247,22 @@ rxi_GetHostUDPSocket(u_int ahost, u_short port)
     taddr.sin_len = sizeof(taddr);
 #endif
 
-    code = rxi_BindSocket(&socketFd, (struct sockaddr *)&taddr, sizeof(taddr));
+    code = rxi_BindSocket(&socketFd, (struct sockaddr *)&taddr, sizeof(taddr), 0);
     if (code) {
         goto error;
     }
+
+#ifdef AFS_RX_REUSEPORT_ENV
+    if (rxi_reuseport) {
+	/* Re-bind the socket with SO_REUSEPORT turned on */
+	rxi_CloseSocket(&socketFd);
+	code = rxi_BindSocket(&socketFd, (struct sockaddr *)&taddr,
+	                      sizeof(taddr), 1);
+	if (code) {
+	    goto error;
+	}
+    }
+#endif /* AFS_RX_REUSEPORT_ENV */
 
     if (rxi_Listen(socketFd) < 0) {
 	goto error;

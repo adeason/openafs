@@ -66,6 +66,10 @@ static int rxi_n_listeners = 1;
 
 static rx_atomic_t threadHiNum;
 
+#ifdef AFS_RX_REUSEPORT_ENV
+int rxi_reuseport;
+#endif
+
 int
 rx_NewThreadId(void) {
     return rx_atomic_inc_and_read(&threadHiNum);
@@ -78,6 +82,13 @@ rx_SetListenerThreads(int nthreads)
         return -EINVAL;
     }
     rxi_n_listeners = nthreads;
+#ifdef AFS_RX_REUSEPORT_ENV
+    if (nthreads > 1) {
+        rxi_reuseport = 1;
+    } else {
+        rxi_reuseport = 0;
+    }
+#endif
     return 0;
 }
 
@@ -211,10 +222,14 @@ rxi_ReScheduleEvents(void)
 }
 
 
-/* Loop to listen on a socket. Return setting *newcallp if this
- * thread should become a server thread.  */
+/* Loop to listen on a socket; recv() the packets from recv_sock, but tell rx
+ * we got the packets from rx_sock. (recv_sock and rx_sock may be the same or
+ * different, depending on if SO_REUSEPORT is used)
+ *
+ * Return setting *newcallp if this thread should become a server thread.  */
 static void
-rxi_ListenerProc(osi_socket sock, int *tnop, struct rx_call **newcallp)
+rxi_ListenerProc(osi_socket recv_sock, osi_socket rx_sock, int *tnop,
+                 struct rx_call **newcallp)
 {
     int code;
     struct rxi_recvlist *pkts;
@@ -246,8 +261,8 @@ rxi_ListenerProc(osi_socket sock, int *tnop, struct rx_call **newcallp)
             osi_Panic("rxi_Listener: no packets!");	/* Shouldn't happen */
         }
 
-	if (rxi_ReadPacketList(sock, pkts)) {
-	    rxi_ReceivePacketList(sock, pkts, tnop, newcallp);
+	if (rxi_ReadPacketList(recv_sock, pkts)) {
+	    rxi_ReceivePacketList(rx_sock, pkts, tnop, newcallp);
 	    if (newcallp && *newcallp) {
 		rxi_RecvListFree(&pkts);
 		return;
@@ -270,7 +285,7 @@ rx_ListenerProc(void *argp)
     while (1) {
 	newcall = NULL;
 	threadID = -1;
-	rxi_ListenerProc(sock, &threadID, &newcall);
+	rxi_ListenerProc(sock, sock, &threadID, &newcall);
 	/* osi_Assert(threadID != -1); */
 	/* osi_Assert(newcall != NULL); */
 	sock = OSI_NULLSOCKET;
@@ -281,13 +296,54 @@ rx_ListenerProc(void *argp)
     AFS_UNREACHED(return(NULL));
 }
 
+#ifdef AFS_RX_REUSEPORT_ENV
+static osi_socket
+reuseport_rebind(osi_socket rx_sock)
+{
+    int code;
+    osi_socket sock = OSI_NULLSOCKET;
+    struct sockaddr_storage addr;
+    socklen_t addrlen = sizeof(addr);
+
+    code = getsockname(rx_sock, (struct sockaddr *)&addr, &addrlen);
+    if (code) {
+        goto error;
+    }
+
+    code = rxi_BindSocket(&sock, (struct sockaddr *)&addr, addrlen, 1);
+    if (code) {
+        goto error;
+    }
+
+    return sock;
+
+ error:
+    if (sock != OSI_NULLSOCKET) {
+        close(sock);
+    }
+    return OSI_NULLSOCKET;
+}
+#endif
+
 /* Like rx_ListenerProc, but we never switch to a server thread. */
 static void *
 rx_SubListenerProc(void *argp)
 {
-    osi_socket sock = (osi_socket)(intptr_t)argp;
+    osi_socket rx_sock = (osi_socket)(intptr_t)argp;
+    osi_socket recv_sock = rx_sock;
+
+#ifdef AFS_RX_REUSEPORT_ENV
+    if (rxi_reuseport) {
+        /* Get a copy of 'rx_sock' with SO_REUSEPORT set. */
+        recv_sock = reuseport_rebind(rx_sock);
+        if (recv_sock == OSI_NULLSOCKET) {
+            osi_Panic("rx_SubListenerProc: cannot rebind listener socket\n");
+        }
+    }
+#endif
+
     while (1) {
-        rxi_ListenerProc(sock, NULL, NULL);
+        rxi_ListenerProc(recv_sock, rx_sock, NULL, NULL);
     }
     /* not reached */
     return NULL;
@@ -333,7 +389,7 @@ rx_ServerProc(void * dummy)
 	rxi_ServerProc(threadID, newcall, &sock);
 	/* osi_Assert(sock != OSI_NULLSOCKET); */
 	newcall = NULL;
-	rxi_ListenerProc(sock, &threadID, &newcall);
+	rxi_ListenerProc(sock, sock, &threadID, &newcall);
 	/* osi_Assert(threadID != -1); */
 	/* osi_Assert(newcall != NULL); */
     }

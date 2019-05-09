@@ -28,3 +28,19 @@ AS_IF([test "$ac_cv_setsockopt_iprecverr" = "yes"],
       [AC_DEFINE([HAVE_SETSOCKOPT_IP_RECVERR], [1],
                  [define if we can receive socket errors via IP_RECVERR])])
 ])
+
+AC_DEFUN([OPENAFS_REUSEPORT],
+ [AC_CACHE_CHECK([for SO_REUSEPORT],
+   [ac_cv_setsockopt_so_reuseport],
+
+   [AC_COMPILE_IFELSE(
+     [AC_LANG_PROGRAM(
+       [[#include <sys/socket.h>]],
+       [[int on=1;
+         setsockopt(0, SOL_SOCKET, SO_REUSEPORT, &on, sizeof(on));]])],
+     [ac_cv_setsockopt_so_reuseport=yes],
+     [ac_cv_setsockopt_so_reuseport=no])])
+
+  AS_IF([test x"$ac_cv_setsockopt_so_reuseport" = xyes],
+   [AC_DEFINE([HAVE_SO_REUSEPORT], [1],
+     [define if SO_REUSEPORT is available])])])

@@ -178,6 +178,9 @@ extern u_short rx_PortOf(struct rx_peer *peer);
 #define RX_CALL_NEEDS_RXISTART 0x200000 /* an rxi_Start call has been deferred */
 #endif
 
+#if defined(HAVE_SO_REUSEPORT) && !defined(KERNEL) && defined(AFS_PTHREAD_ENV)
+# define AFS_RX_REUSEPORT_ENV
+#endif
 
 /* Configurable parameters */
 #define	RX_IDLE_DEAD_TIME	60	/* default idle dead time */
@@ -866,6 +869,10 @@ typedef struct rx_interface_stat {
 
 #ifdef AFS_NT40_ENV
 extern int rx_DumpCalls(FILE *outputFile, char *cookie);
+#endif
+
+#ifdef AFS_RX_REUSEPORT_ENV
+extern int rxi_reuseport;
 #endif
 
 #endif /* _RX_   End of rx.h */

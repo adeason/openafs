@@ -142,5 +142,5 @@ extern int rxi_BulkSendDgram(struct rxi_xmit_dgramlist *dgramlist, osi_socket so
 
 #ifndef KERNEL
 extern int rxi_BindSocket(osi_socket *a_socketFd, struct sockaddr *addr,
-                          size_t addrlen);
+                          size_t addrlen, int reuseport);
 #endif
