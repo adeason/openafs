@@ -3384,6 +3384,49 @@ rxi_ReceiveServerCall(osi_socket socket, struct rx_packet *np,
     return call;
 }
 
+/* rxi_ReceivePacket, but for non-connection packets (VERSION, DEBUG). */
+static struct rx_packet *
+rxi_ReceivePacketGlobal(struct rx_packet *np, osi_socket socket,
+                        afs_uint32 host, u_short port)
+{
+    if (rx_stats_active) {
+	/* Normally the per-connection code handles these stats, but these packet
+	 * will not go through the connection code, so handle the peer processing
+	 * here. */
+	struct rx_peer *peer;
+
+	/* Try to look up the peer structure, but don't create one */
+	peer = rxi_FindPeer(host, port, 0);
+
+	/* Since this may not be associated with a connection, it may have
+	 * no refCount, meaning we could race with ReapConnections
+	 */
+
+	if (peer && (peer->refCount > 0)) {
+#ifdef AFS_RXERRQ_ENV
+	    if (rx_atomic_read(&peer->neterrs)) {
+		rx_atomic_set(&peer->neterrs, 0);
+	    }
+#endif
+	    MUTEX_ENTER(&peer->peer_lock);
+	    peer->bytesReceived += np->length;
+	    MUTEX_EXIT(&peer->peer_lock);
+	}
+    }
+
+    if (np->header.type == RX_PACKET_TYPE_VERSION) {
+	np = rxi_ReceiveVersionPacket(np, socket, host, port, 1);
+	goto done;
+    }
+
+    if (np->header.type == RX_PACKET_TYPE_DEBUG) {
+	np = rxi_ReceiveDebugPacket(np, socket, host, port, 1);
+	goto done;
+    }
+
+ done:
+    return np;
+}
 
 /* There are two packet tracing routines available for testing and monitoring
  * Rx.  One is called just after every packet is received and the other is
@@ -3428,40 +3471,12 @@ rxi_ReceivePacket(struct rx_packet *np, osi_socket socket,
 	 np->header.seq, np->header.flags, np));
 #endif
 
-    /* Account for connectionless packets */
-    if (rx_stats_active &&
-	((np->header.type == RX_PACKET_TYPE_VERSION) ||
-         (np->header.type == RX_PACKET_TYPE_DEBUG))) {
-	struct rx_peer *peer;
-
-	/* Try to look up the peer structure, but don't create one */
-	peer = rxi_FindPeer(host, port, 0);
-
-	/* Since this may not be associated with a connection, it may have
-	 * no refCount, meaning we could race with ReapConnections
-	 */
-
-	if (peer && (peer->refCount > 0)) {
-#ifdef AFS_RXERRQ_ENV
-	    if (rx_atomic_read(&peer->neterrs)) {
-		rx_atomic_set(&peer->neterrs, 0);
-	    }
-#endif
-	    MUTEX_ENTER(&peer->peer_lock);
-	    peer->bytesReceived += np->length;
-	    MUTEX_EXIT(&peer->peer_lock);
-	}
-    }
-
-    if (np->header.type == RX_PACKET_TYPE_VERSION) {
-	np = rxi_ReceiveVersionPacket(np, socket, host, port, 1);
+    if (np->header.type == RX_PACKET_TYPE_VERSION ||
+        np->header.type == RX_PACKET_TYPE_DEBUG) {
+	np = rxi_ReceivePacketGlobal(np, socket, host, port);
 	goto done;
     }
 
-    if (np->header.type == RX_PACKET_TYPE_DEBUG) {
-	np = rxi_ReceiveDebugPacket(np, socket, host, port, 1);
-	goto done;
-    }
 #ifdef RXDEBUG
     /* If an input tracer function is defined, call it with the packet and
      * network address.  Note this function may modify its arguments. */
