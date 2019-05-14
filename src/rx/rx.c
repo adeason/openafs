@@ -3428,6 +3428,33 @@ rxi_ReceivePacketGlobal(struct rx_packet *np, osi_socket socket,
     return np;
 }
 
+static_inline int
+invoke_justReceived(struct rx_packet *np, afs_uint32 *ahost, u_short *aport)
+{
+#ifdef RXDEBUG
+    /* If an input tracer function is defined, call it with the packet and
+     * network address.  Note this function may modify its arguments. */
+    if (rx_justReceived) {
+	struct sockaddr_in addr;
+	int drop;
+	addr.sin_family = AF_INET;
+	addr.sin_port = *aport;
+	addr.sin_addr.s_addr = *ahost;
+	memset(&addr.sin_zero, 0, sizeof(addr.sin_zero));
+# ifdef STRUCT_SOCKADDR_HAS_SA_LEN
+	addr.sin_len = sizeof(addr);
+# endif
+	drop = (*rx_justReceived) (np, &addr);
+	/* drop packet if return value is non-zero */
+	if (drop)
+	    return 1;
+	*aport = addr.sin_port;	/* in case fcn changed addr */
+	*ahost = addr.sin_addr.s_addr;
+    }
+#endif
+    return 0;
+}
+
 /* There are two packet tracing routines available for testing and monitoring
  * Rx.  One is called just after every packet is received and the other is
  * called just before every packet is sent.  Received packets, have had their
@@ -3477,27 +3504,10 @@ rxi_ReceivePacket(struct rx_packet *np, osi_socket socket,
 	goto done;
     }
 
-#ifdef RXDEBUG
-    /* If an input tracer function is defined, call it with the packet and
-     * network address.  Note this function may modify its arguments. */
-    if (rx_justReceived) {
-	struct sockaddr_in addr;
-	int drop;
-	addr.sin_family = AF_INET;
-	addr.sin_port = port;
-	addr.sin_addr.s_addr = host;
-	memset(&addr.sin_zero, 0, sizeof(addr.sin_zero));
-#ifdef STRUCT_SOCKADDR_HAS_SA_LEN
-	addr.sin_len = sizeof(addr);
-#endif /* AFS_OSF_ENV */
-	drop = (*rx_justReceived) (np, &addr);
-	/* drop packet if return value is non-zero */
-	if (drop)
-	    goto done;
-	port = addr.sin_port;	/* in case fcn changed addr */
-	host = addr.sin_addr.s_addr;
+    if (invoke_justReceived(np, &host, &port)) {
+        /* Drop the packet if rx_justReceived says so. */
+        goto done;
     }
-#endif
 
     /* If packet was not sent by the client, then *we* must be the client */
     type = ((np->header.flags & RX_CLIENT_INITIATED) != RX_CLIENT_INITIATED)
