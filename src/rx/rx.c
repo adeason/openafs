@@ -3455,6 +3455,152 @@ invoke_justReceived(struct rx_packet *np, afs_uint32 *ahost, u_short *aport)
     return 0;
 }
 
+/* Process a packet for the given call. */
+static struct rx_packet *
+rxi_ReceivePacketCall(struct rx_call *call, struct rx_packet *np,
+                      osi_socket socket, int *tnop, struct rx_call **newcallp)
+{
+    MUTEX_ASSERT(&call->lock);
+    /* Set remote user defined status from packet */
+    call->remoteStatus = np->header.userStatus;
+
+    /* Now do packet type-specific processing */
+    switch (np->header.type) {
+    case RX_PACKET_TYPE_DATA:
+	/* If we're a client, and receiving a response, then all the packets
+	 * we transmitted packets are implicitly acknowledged. */
+	if (rx_IsClientConn(call->conn) && !opr_queue_IsEmpty(&call->tq))
+	    rxi_AckAllInTransmitQueue(call);
+
+	np = rxi_ReceiveDataPacket(call, np, 1, socket, tnop, newcallp);
+	break;
+    case RX_PACKET_TYPE_ACK:
+	/* Respond immediately to ack packets requesting acknowledgement
+	 * (ping packets) */
+	if (np->header.flags & RX_REQUEST_ACK) {
+	    if (call->error)
+		(void)rxi_SendCallAbort(call, 0, 1, 0);
+	    else
+		(void)rxi_SendAck(call, 0, np->header.serial,
+				  RX_ACK_PING_RESPONSE, 1);
+	}
+	np = rxi_ReceiveAckPacket(call, np, 1);
+	break;
+    case RX_PACKET_TYPE_ABORT: {
+	/* An abort packet: reset the call, passing the error up to the user. */
+	/* What if error is zero? */
+	/* What if the error is -1? the application will treat it as a timeout. */
+	afs_int32 errdata = ntohl(*(afs_int32 *) rx_DataOf(np));
+	dpf(("rxi_ReceivePacket ABORT rx_DataOf = %d\n", errdata));
+	rxi_CallError(call, errdata);
+	goto done;		/* xmitting; drop packet */
+    }
+    case RX_PACKET_TYPE_BUSY:
+	/* Mostly ignore BUSY packets. We will update lastReceiveTime below,
+	 * so we don't think the endpoint is completely dead, but otherwise
+	 * just act as if we never saw anything. If all we get are BUSY packets
+	 * back, then we will eventually error out with RX_CALL_TIMEOUT if the
+	 * connection is configured with idle/hard timeouts. */
+	break;
+
+    case RX_PACKET_TYPE_ACKALL:
+	/* All packets acknowledged, so we can drop all packets previously
+	 * readied for sending */
+	rxi_AckAllInTransmitQueue(call);
+	break;
+    default:
+	/* Should not reach here, unless the peer is broken: send an abort
+	 * packet */
+	rxi_CallError(call, RX_PROTOCOL_ERROR);
+	np = rxi_SendCallAbort(call, np, 1, 0);
+	break;
+    };
+    /* Note when this last legitimate packet was received, for keep-alive
+     * processing.  Note, we delay getting the time until now in the hope that
+     * the packet will be delivered to the user before any get time is required
+     * (if not, then the time won't actually be re-evaluated here). */
+    call->lastReceiveTime = clock_Sec();
+
+ done:
+    return np;
+}
+
+/* Process a packet for the given connection. */
+static struct rx_packet *
+rxi_ReceivePacketConn(struct rx_connection *conn, struct rx_packet *np,
+                      osi_socket socket, int *tnop, struct rx_call **newcallp)
+{
+    struct rx_call *call = NULL;
+
+    /* If we're doing statistics, then account for the incoming packet */
+    if (rx_stats_active) {
+	MUTEX_ENTER(&conn->peer->peer_lock);
+	conn->peer->bytesReceived += np->length;
+	MUTEX_EXIT(&conn->peer->peer_lock);
+    }
+
+    /* If the connection is in an error state, send an abort packet and ignore
+     * the incoming packet */
+    if (conn->error) {
+	/* Don't respond to an abort packet--we don't want loops! */
+	MUTEX_ENTER(&conn->conn_data_lock);
+	if (np->header.type != RX_PACKET_TYPE_ABORT)
+	    np = rxi_SendConnectionAbort(conn, np, 1, 0);
+	MUTEX_EXIT(&conn->conn_data_lock);
+	goto done;
+    }
+
+    /* Check for connection-only requests (i.e. not call specific). */
+    if (np->header.callNumber == 0) {
+	switch (np->header.type) {
+	case RX_PACKET_TYPE_ABORT: {
+	    /* What if the supplied error is zero? */
+	    afs_int32 errcode = ntohl(rx_GetInt32(np, 0));
+	    dpf(("rxi_ReceivePacket ABORT rx_GetInt32 = %d\n", errcode));
+	    rxi_ConnectionError(conn, errcode);
+	    goto done;
+	}
+	case RX_PACKET_TYPE_CHALLENGE:
+	    np = rxi_ReceiveChallengePacket(conn, np, 1);
+	    goto done;
+	case RX_PACKET_TYPE_RESPONSE:
+	    np = rxi_ReceiveResponsePacket(conn, np, 1);
+	    goto done;
+	case RX_PACKET_TYPE_PARAMS:
+	case RX_PACKET_TYPE_PARAMS + 1:
+	case RX_PACKET_TYPE_PARAMS + 2:
+	    /* ignore these packet types for now */
+	    goto done;
+
+	default:
+	    /* Should not reach here, unless the peer is broken: send an
+	     * abort packet */
+	    rxi_ConnectionError(conn, RX_PROTOCOL_ERROR);
+	    MUTEX_ENTER(&conn->conn_data_lock);
+	    np = rxi_SendConnectionAbort(conn, np, 1, 0);
+	    MUTEX_EXIT(&conn->conn_data_lock);
+	    goto done;
+	}
+    }
+
+    if (rx_IsServerConn(conn))
+	call = rxi_ReceiveServerCall(socket, np, conn);
+    else
+	call = rxi_ReceiveClientCall(np, conn);
+
+    if (call == NULL) {
+	goto done;
+    }
+
+    np = rxi_ReceivePacketCall(call, np, socket, tnop, newcallp);
+
+ done:
+    if (call) {
+	MUTEX_EXIT(&call->lock);
+    }
+    return np;
+}
+
 /* There are two packet tracing routines available for testing and monitoring
  * Rx.  One is called just after every packet is received and the other is
  * called just before every packet is sent.  Received packets, have had their
@@ -3477,7 +3623,6 @@ rxi_ReceivePacket(struct rx_packet *np, osi_socket socket,
 		  afs_uint32 host, u_short port, int *tnop,
 		  struct rx_call **newcallp)
 {
-    struct rx_call *call = NULL;
     struct rx_connection *conn = NULL;
     int type;
     int unknownService = 0;
@@ -3535,131 +3680,9 @@ rxi_ReceivePacket(struct rx_packet *np, osi_socket socket,
     }
 #endif
 
-    /* If we're doing statistics, then account for the incoming packet */
-    if (rx_stats_active) {
-	MUTEX_ENTER(&conn->peer->peer_lock);
-	conn->peer->bytesReceived += np->length;
-	MUTEX_EXIT(&conn->peer->peer_lock);
-    }
-
-    /* If the connection is in an error state, send an abort packet and ignore
-     * the incoming packet */
-    if (conn->error) {
-	/* Don't respond to an abort packet--we don't want loops! */
-	MUTEX_ENTER(&conn->conn_data_lock);
-	if (np->header.type != RX_PACKET_TYPE_ABORT)
-	    np = rxi_SendConnectionAbort(conn, np, 1, 0);
-	MUTEX_EXIT(&conn->conn_data_lock);
-	goto done;
-    }
-
-    /* Check for connection-only requests (i.e. not call specific). */
-    if (np->header.callNumber == 0) {
-	switch (np->header.type) {
-	case RX_PACKET_TYPE_ABORT: {
-	    /* What if the supplied error is zero? */
-	    afs_int32 errcode = ntohl(rx_GetInt32(np, 0));
-	    dpf(("rxi_ReceivePacket ABORT rx_GetInt32 = %d\n", errcode));
-	    rxi_ConnectionError(conn, errcode);
-	    goto done;
-	}
-	case RX_PACKET_TYPE_CHALLENGE:
-	    np = rxi_ReceiveChallengePacket(conn, np, 1);
-	    goto done;
-	case RX_PACKET_TYPE_RESPONSE:
-	    np = rxi_ReceiveResponsePacket(conn, np, 1);
-	    goto done;
-	case RX_PACKET_TYPE_PARAMS:
-	case RX_PACKET_TYPE_PARAMS + 1:
-	case RX_PACKET_TYPE_PARAMS + 2:
-	    /* ignore these packet types for now */
-	    goto done;
-
-	default:
-	    /* Should not reach here, unless the peer is broken: send an
-	     * abort packet */
-	    rxi_ConnectionError(conn, RX_PROTOCOL_ERROR);
-	    MUTEX_ENTER(&conn->conn_data_lock);
-	    np = rxi_SendConnectionAbort(conn, np, 1, 0);
-	    MUTEX_EXIT(&conn->conn_data_lock);
-	    goto done;
-	}
-    }
-
-    if (type == RX_SERVER_CONNECTION)
-	call = rxi_ReceiveServerCall(socket, np, conn);
-    else
-	call = rxi_ReceiveClientCall(np, conn);
-
-    if (call == NULL) {
-	goto done;
-    }
-
-    MUTEX_ASSERT(&call->lock);
-    /* Set remote user defined status from packet */
-    call->remoteStatus = np->header.userStatus;
-
-    /* Now do packet type-specific processing */
-    switch (np->header.type) {
-    case RX_PACKET_TYPE_DATA:
-	/* If we're a client, and receiving a response, then all the packets
-	 * we transmitted packets are implicitly acknowledged. */
-	if (type == RX_CLIENT_CONNECTION && !opr_queue_IsEmpty(&call->tq))
-	    rxi_AckAllInTransmitQueue(call);
-
-	np = rxi_ReceiveDataPacket(call, np, 1, socket, tnop, newcallp);
-	break;
-    case RX_PACKET_TYPE_ACK:
-	/* Respond immediately to ack packets requesting acknowledgement
-	 * (ping packets) */
-	if (np->header.flags & RX_REQUEST_ACK) {
-	    if (call->error)
-		(void)rxi_SendCallAbort(call, 0, 1, 0);
-	    else
-		(void)rxi_SendAck(call, 0, np->header.serial,
-				  RX_ACK_PING_RESPONSE, 1);
-	}
-	np = rxi_ReceiveAckPacket(call, np, 1);
-	break;
-    case RX_PACKET_TYPE_ABORT: {
-	/* An abort packet: reset the call, passing the error up to the user. */
-	/* What if error is zero? */
-	/* What if the error is -1? the application will treat it as a timeout. */
-	afs_int32 errdata = ntohl(*(afs_int32 *) rx_DataOf(np));
-	dpf(("rxi_ReceivePacket ABORT rx_DataOf = %d\n", errdata));
-	rxi_CallError(call, errdata);
-	goto done;		/* xmitting; drop packet */
-    }
-    case RX_PACKET_TYPE_BUSY:
-	/* Mostly ignore BUSY packets. We will update lastReceiveTime below,
-	 * so we don't think the endpoint is completely dead, but otherwise
-	 * just act as if we never saw anything. If all we get are BUSY packets
-	 * back, then we will eventually error out with RX_CALL_TIMEOUT if the
-	 * connection is configured with idle/hard timeouts. */
-	break;
-
-    case RX_PACKET_TYPE_ACKALL:
-	/* All packets acknowledged, so we can drop all packets previously
-	 * readied for sending */
-	rxi_AckAllInTransmitQueue(call);
-	break;
-    default:
-	/* Should not reach here, unless the peer is broken: send an abort
-	 * packet */
-	rxi_CallError(call, RX_PROTOCOL_ERROR);
-	np = rxi_SendCallAbort(call, np, 1, 0);
-	break;
-    };
-    /* Note when this last legitimate packet was received, for keep-alive
-     * processing.  Note, we delay getting the time until now in the hope that
-     * the packet will be delivered to the user before any get time is required
-     * (if not, then the time won't actually be re-evaluated here). */
-    call->lastReceiveTime = clock_Sec();
+    np = rxi_ReceivePacketConn(conn, np, socket, tnop, newcallp);
 
  done:
-    if (call) {
-	MUTEX_EXIT(&call->lock);
-    }
     if (conn) {
 	putConnection(conn);
     }
