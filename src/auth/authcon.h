@@ -34,9 +34,22 @@
 
 #include <afs/cellconfig.h>
 
+enum afsconf_bsso_type {
+    AFSCONF_BSSO_DEFAULT = 0,
+    AFSCONF_BSSO_VLSERVER = 1,
+};
+
 struct afsconf_bsso_info {
+    enum afsconf_bsso_type type;
+
     struct afsconf_dir *dir;
     void (*logger)(const char *format, ...);
+
+    /*
+     * IP address the server is bound to (in network byte order), if any. This
+     * is passed to rx_NewServiceHost().
+     */
+    afs_uint32 host;
 };
 
 int afsconf_BuildServerSecurityObjects_int(struct afsconf_bsso_info *info,

@@ -51,6 +51,7 @@
 #ifdef AFS_RXGK_GSS_ENV
 
 #include <afs/afsutil.h>
+#include <opr/time.h>
 
 #include <rx/rx.h>
 #include <rx/rxgk.h>
@@ -102,6 +103,13 @@ log_gss_error(const char *prefix, afs_uint32 major, afs_uint32 minor)
     }
 }
 
+#define log_gss_error_limit(prefix, major, minor) do { \
+    static time_t _last; \
+    if (ViceLog_ratelimit(&_last, VICELOG_RATELIMIT_DEFAULT)) { \
+	log_gss_error((prefix), (major), (minor)); \
+    } \
+} while (0)
+
 /* Translate GSS major/minor status codes into rxgk error codes. */
 static_inline afs_int32
 gss2rxgk_error_line(const char *prefix, afs_uint32 major, afs_uint32 minor,
@@ -132,6 +140,29 @@ gss2rxgk_error_line(const char *prefix, afs_uint32 major, afs_uint32 minor,
 }
 #define gss2rxgk_error(prefix, major, minor) \
 	gss2rxgk_error_line((prefix), (major), (minor), __FILE__, __LINE__)
+
+/*
+ * Convert a gss_buffer_desc to an RXGK_Data (aka rx_opaque), making an
+ * xdr_alloc()'d copy of the underlying data.
+ */
+static int
+gss2xdr_copy(gss_buffer_desc *gss_buf, RXGK_Data *xdr_buf)
+{
+    if (gss_buf->length == 0) {
+	xdr_buf->len = 0;
+	xdr_buf->val = NULL;
+	return 0;
+    }
+
+    xdr_buf->val = xdr_alloc(gss_buf->length);
+    if (xdr_buf->val == NULL) {
+	return rxgk_misc_error();
+    }
+
+    xdr_buf->len = gss_buf->length;
+    memcpy(xdr_buf->val, gss_buf->value, xdr_buf->len);
+    return 0;
+}
 
 /**
  * Helper to make a token master key from a GSS security context
@@ -783,4 +814,852 @@ rxgk_NegotiateClientToken(struct rx_connection *conn, char *target,
 
     return code;
 }
+
+/*
+ * Server-side routines.
+ */
+
+struct rxgk_service_ctx {
+    /*
+     * Is our GSS-related information initialized properly? That is, are our
+     * other gss_* fields initialized and ok to use.
+     */
+    int gss_ok;
+
+    /* GSS Acceptor creds. */
+    gss_cred_id_t gss_creds;
+
+    /* When do our acceptor creds expire? */
+    struct afs_time64 gss_creds_expire;
+
+    /* Callback to get our long-term key to use for encrypting tokens. */
+    rxgk_getkey_func getkey;
+    void *getkey_rock;
+};
+
+#if HAVE_KRB5_GSS_REGISTER_ACCEPTOR_IDENTITY
+static afs_int32
+set_gss_keytab(char *keytab)
+{
+    afs_int32 code = krb5_gss_register_acceptor_identity(keytab);
+    if (code != 0) {
+	ViceLog(0, ("rxgk: krb5_gss_register_acceptor_identity(%s) failed "
+		    "with code %d\n", keytab, code));
+	return RXGK_INCONSISTENCY;
+    }
+    return 0;
+}
+#else
+static afs_int32
+set_gss_keytab(char *keytab)
+{
+    afs_int32 code = setenv("KRB5_KTNAME", keytab, 0);
+    if (code != 0) {
+	ViceLog(0, ("rxgk: setenv(KRB5_KTNAME, %s) failed with code %d.\n",
+		    keytab, errno));
+	return RXGK_INCONSISTENCY;
+    }
+    return 0;
+}
+#endif /* !HAVE_KRB5_GSS_REGISTER_ACCEPTOR_IDENTITY */
+
+static afs_int32
+service_init_gss(struct rxgk_service_ctx *gk, struct rxgk_service_info *info)
+{
+    gss_buffer_desc name_buf;
+    gss_name_t server_name;
+    afs_int32 code;
+    afs_uint32 major, minor, time_rec;
+    gss_cred_id_t gss_creds;
+
+    memset(&server_name, 0, sizeof(server_name));
+    memset(&gss_creds, 0, sizeof(gss_creds));
+
+    if (access(info->keytab, R_OK) != 0) {
+	code = errno;
+	ViceLog(0, ("rxgk: Not setting up GSS services; cannot access acceptor "
+		"creds in %s, errno=%d.\n",
+		info->keytab, code));
+	/*
+	 * Return success if rxgk.keytab doesn't exist; the most likely reason
+	 * for this is that the administrator just hasn't set up rxgk, so this
+	 * isn't really an error.
+	 */
+	code = 0;
+	goto done;
+    }
+
+    name_buf.value = info->acceptor;
+    name_buf.length = strlen(info->acceptor);
+    major = gss_import_name(&minor, &name_buf, GSS_C_NT_HOSTBASED_SERVICE,
+			    &server_name);
+    code = gss2rxgk_error("gss_import_name", major, minor);
+    if (code != 0) {
+	goto done;
+    }
+
+    ViceLog(0, ("rxgk: Using GSS acceptor creds for %s in %s\n",
+	    info->acceptor, info->keytab));
+    code = set_gss_keytab(info->keytab);
+    if (code != 0) {
+	goto done;
+    }
+
+    major = gss_acquire_cred(&minor, server_name, GSS_C_INDEFINITE,
+			     (gss_OID_set)gss_mech_set_krb5, GSS_C_ACCEPT,
+			     &gss_creds, NULL /* actual_mechs */, &time_rec);
+    code = gss2rxgk_error("gss_acquire_cred", major, minor);
+    if (code != 0) {
+	goto done;
+    }
+    if (time_rec != 0 && time_rec != GSS_C_INDEFINITE) {
+	ViceLog(0, ("rxgk: Warning: Our GSS acceptor creds will expire in %u "
+		    "seconds. rxgk currently does not support renewing\n",
+		    time_rec));
+	ViceLog(0, ("rxgk: Warning: acceptor creds when they expire, so rxgk "
+		    "will probably stop working after that time. Please file "
+		    "a bug if you need acceptor creds to renew.\n"));
+
+	code = opr_time64_addSecs_safe(opr_time64_now(), time_rec,
+				       &gk->gss_creds_expire);
+	if (code != 0) {
+	    code = rxgk_misc_error();
+	    goto done;
+	}
+    }
+
+    gk->gss_creds = gss_creds;
+    gss_creds = GSS_C_NO_CREDENTIAL;
+
+    gk->gss_ok = 1;
+
+ done:
+    (void)gss_release_name(&minor, &server_name);
+    (void)gss_release_cred(&minor, &gss_creds);
+    /* name_buf aliases 'info->acceptor'; don't free it */
+    return code;
+}
+
+/**
+ * Setup the RXGK_ rx service.
+ *
+ * Sets service-specific data for the RXGK_ service in a server process.
+ *
+ * @param[in,out] svc	The rx service which will have service-specific data
+ *			set upon it.
+ * @param[in] info	The rxgk-related data to set.
+ *
+ * @return rxgk or system error codes.
+ */
+afs_int32
+rxgk_service_init(struct rx_service *svc,
+		  struct rxgk_service_info *info)
+{
+    struct rxgk_service_ctx *gk = NULL;
+    afs_int32 code;
+
+    if (info->acceptor == NULL || info->keytab == NULL || info->getkey == NULL) {
+	return rxgk_misc_error();
+    }
+
+    gk = rxi_Alloc(sizeof(*gk));
+    if (gk == NULL) {
+	code = rxgk_misc_error();
+	goto done;
+    }
+
+    gk->getkey = info->getkey;
+    gk->getkey_rock = info->getkey_rock;
+
+    code = service_init_gss(gk, info);
+    if (code != 0) {
+	/*
+	 * Don't jump to 'done' here. We still continue setting up rxgk even if
+	 * we encounter errors; we just log a message an return an error to the
+	 * caller.
+	 */
+	ViceLog(0, ("rxgk: service_init_gss failed with %d\n", code));
+    }
+
+    rx_SetServiceSpecific(svc, RXGK_SSPECIFIC_GSSNEGO, gk);
+    gk = NULL;
+
+ done:
+    if (gk != NULL) {
+	rxi_Free(gk, sizeof(*gk));
+    }
+    return code;
+}
+
+/*
+ * Server-side routines supporting SRXGK_GSSNegotiate().
+ */
+
+/* One week */
+#define MAX_LIFETIME	(60 * 60 * 24 * 7)
+/* One TiB */
+#define MAX_BYTELIFE	40
+/*
+ * Process the client's suggested starting parameters and determine what the
+ * actual values of the parameters will be (or that the client's suggestion
+ * was unacceptable).
+ * Final values are stored in the TokenInfo struct for convenience.
+ * This "local tokeninfo" will be the source of truth for information about
+ * the token being constructed.
+ *
+ * Returns an RX error code.
+ */
+static afs_int32
+process_client_params(RXGK_StartParams *params, RXGK_TokenInfo *info)
+{
+    afs_int32 code;
+    code = rxgk_choose_enctype(&params->enctypes, &info->enctype);
+    if (code != 0) {
+	return code;
+    }
+
+    code = rxgk_choose_level(params->levels.val, params->levels.len,
+			     &info->level);
+    if (code != 0) {
+	return code;
+    }
+
+    info->lifetime = params->lifetime;
+    if (info->lifetime > MAX_LIFETIME) {
+	info->lifetime = MAX_LIFETIME;
+    }
+    info->bytelife = params->bytelife;
+    if (info->bytelife > MAX_BYTELIFE) {
+	info->bytelife = MAX_BYTELIFE;
+    }
+
+    return 0;
+}
+
+static afs_int32
+get_ctx(struct rx_call *call, struct rxgk_service_ctx **a_gk)
+{
+    struct rx_service *svc;
+    struct rxgk_service_ctx *gk;
+
+    svc = rx_ServiceOf(rx_ConnectionOf(call));
+    gk = rx_GetServiceSpecific(svc, RXGK_SSPECIFIC_GSSNEGO);
+    if (gk == NULL) {
+	ViceLog_limit(0, ("rxgk: internal error: no GSS context for service %p\n",
+			  svc));
+	return RXGK_INCONSISTENCY;
+    }
+
+    if (!gk->gss_ok) {
+	/* If GSS is not setup, pretend this RPC doesn't exist. */
+	return RXGEN_OPCODE;
+    }
+
+    if (gk->gss_creds == GSS_C_NO_CREDENTIAL ||
+	gk->gss_creds == NULL ||
+	gk->getkey == NULL) {
+
+	ViceLog_limit(0, ("rxgk: internal error: invalid GSS context for "
+			  "service %p\n", svc));
+	return RXGK_INCONSISTENCY;
+    }
+
+    if (opr_time64_isPositive(gk->gss_creds_expire)) {
+	struct afs_time64 now = opr_time64_now();
+
+	if (opr_time64_lt(gk->gss_creds_expire, now)) {
+	    /*
+	     * Our acceptor creds have expired? This is usually impossible; we
+	     * don't handle recovering from this yet, but at least log what
+	     * happened.
+	     */
+	    ViceLog_limit(0,
+		("rxgk: Our acceptor creds have expired (%lld < %lld). GSS "
+		 "negotiation will probably always fail from now on. This "
+		 "should not normally happen; please file a bug.\n",
+		 opr_time64_toClunksLL(gk->gss_creds_expire),
+		 opr_time64_toClunksLL(now)));
+	    return RXGK_INCONSISTENCY;
+	}
+    }
+    *a_gk = gk;
+    return 0;
+}
+
+/*
+ * Copy the fields from a TokenInfo into a ClientInfo.
+ * ClientInfo is a superset of TokenInfo.
+ */
+static_inline void
+tokeninfo_to_clientinfo(RXGK_TokenInfo *local, RXGK_ClientInfo *client)
+{
+    client->enctype = local->enctype;
+    client->level = local->level;
+    client->lifetime = local->lifetime;
+    client->bytelife = local->bytelife;
+    client->expiration = local->expiration;
+}
+
+static afs_int32
+encode_clientinfo(RXGK_ClientInfo *info, gss_buffer_desc *buf)
+{
+    XDR xdrs;
+    afs_int32 code;
+    afs_uint32 len;
+
+    xdrlen_create(&xdrs);
+    if (!xdr_RXGK_ClientInfo(&xdrs, info)) {
+	code = rxgk_misc_error();
+	goto done;
+    }
+    len = xdr_getpos(&xdrs);
+    xdr_destroy(&xdrs);
+    memset(&xdrs, 0, sizeof(xdrs));
+
+    buf->value = rxi_Alloc(len);
+    if (buf->value == NULL) {
+	code = rxgk_misc_error();
+	goto done;
+    }
+    buf->length = len;
+
+    xdrmem_create(&xdrs, buf->value, len, XDR_ENCODE);
+    if (!xdr_RXGK_ClientInfo(&xdrs, info)) {
+	code = rxgk_misc_error();
+	goto done;
+    }
+
+    /* double-check that we actually encoded 'buf->length' bytes */
+    len = xdr_getpos(&xdrs);
+    if (len != buf->length) {
+	code = rxgk_misc_error();
+	goto done;
+    }
+
+    code = 0;
+
+ done:
+    if (xdrs.x_ops) {
+	xdr_destroy(&xdrs);
+    }
+    return code;
+}
+
+/*
+ * XDR-encode the StartParams structure, and compute a MIC of it using the
+ * provided gss context.
+ *
+ * Allocates its mic parameter; the caller must arrange for it to be freed.
+ *
+ * @param[in] gss_ctx
+ * @param[in] client_start
+ * @param[out] mic
+ * @return rx errors
+ */
+static afs_int32
+get_startparams_mic(gss_ctx_id_t gss_ctx, RXGK_StartParams *client_start,
+		    RXGK_Data *mic)
+{
+    gss_buffer_desc startparams_buf, mic_buffer;
+    afs_uint32 dummy;
+    afs_int32 code;
+
+    memset(&startparams_buf, 0, sizeof(startparams_buf));
+    memset(&mic_buffer, 0, sizeof(mic_buffer));
+
+    code = encode_startparams(client_start, &startparams_buf);
+    if (code != 0) {
+	goto done;
+    }
+
+    /* We have the StartParams encoded, now get the mic. */
+    code = gss_get_mic(&dummy, gss_ctx, GSS_C_QOP_DEFAULT,
+		       &startparams_buf, &mic_buffer);
+    if (code != 0) {
+	code = rxgk_misc_error();
+	goto done;
+    }
+
+    code = gss2xdr_copy(&mic_buffer, mic);
+    if (code) {
+	goto done;
+    }
+
+ done:
+    (void)gss_release_buffer(&dummy, &mic_buffer);
+    rxi_Free(startparams_buf.value, startparams_buf.length);
+    return code;
+}
+
+/**
+ * Encode and encrypt a ClientInfo structure into an RXGK_Data
+ *
+ * XDR-encode the proviced ClientInfo structure, and encrypt it to
+ * the client using the provided GSS context.
+ *
+ * The contents of rxgk_info are allocated and the caller must arrange for
+ * them to be freed.
+ *
+ * @param[in] gss_ctx		The GSS security context used to wrap the
+ *				encoded clientinfo.
+ * @param[out] rxgk_info	The wrapped, encoded clientinfo.
+ * @param[in] info		The input RXGK_ClientInfo to be wrapped.
+ * @return rx error codes
+ */
+static afs_int32
+pack_clientinfo(gss_ctx_id_t gss_ctx, RXGK_ClientInfo *info,
+		RXGK_Data *packed_info)
+{
+    gss_buffer_desc info_buffer, wrapped;
+    afs_uint32 major, minor;
+    afs_int32 code;
+    int conf_state = 0;
+
+    memset(&info_buffer, 0, sizeof(info_buffer));
+    memset(&wrapped, 0, sizeof(wrapped));
+
+    code = encode_clientinfo(info, &info_buffer);
+    if (code != 0) {
+	goto done;
+    }
+    major = gss_wrap(&minor, gss_ctx, 1, GSS_C_QOP_DEFAULT,
+		     &info_buffer, &conf_state, &wrapped);
+    if (GSS_ERROR(major)) {
+	log_gss_error_limit("gss_wrap", major, minor);
+	code = RXGK_INCONSISTENCY;
+	goto done;
+    }
+    if (conf_state == 0) {
+	code = rxgk_int_error(RXGK_BAD_QOP);
+	goto done;
+    }
+
+    code = gss2xdr_copy(&wrapped, packed_info);
+
+ done:
+    (void)gss_release_buffer(&minor, &wrapped);
+    rxi_Free(info_buffer.value, info_buffer.length);
+    return code;
+}
+
+/*
+ * Convert the given gss_name_t into both an exported name used for
+ * authorization comparisons and a display name for display, placing
+ * those in the appropriate fields of the PrAuthName structure, and
+ * setting its type appropriately.
+ *
+ * @return rx errors
+ */
+static afs_int32
+fill_token_identity(PrAuthName *identity, gss_name_t name)
+{
+    gss_buffer_desc exported_name, display_name;
+    afs_uint32 major, minor;
+    afs_int32 code;
+
+    memset(&exported_name, 0, sizeof(exported_name));
+    memset(&display_name, 0, sizeof(display_name));
+
+    major = gss_export_name(&minor, name, &exported_name);
+    if (GSS_ERROR(major)) {
+	log_gss_error_limit("gss_export_name", major, minor);
+	code = RXGK_INCONSISTENCY;
+	goto done;
+    }
+
+    major = gss_display_name(&minor, name, &display_name, NULL);
+    if (GSS_ERROR(major)) {
+	log_gss_error_limit("gss_display_name", major, minor);
+	code = RXGK_INCONSISTENCY;
+	goto done;
+    }
+
+    identity->kind = PRAUTHTYPE_GSS;
+    code = rx_opaque_populate(&identity->data, exported_name.value,
+			      exported_name.length);
+    if (code != 0) {
+	code = rxgk_misc_error();
+	goto done;
+    }
+
+    code = rx_opaque_populate(&identity->display, display_name.value,
+			      display_name.length);
+    if (code != 0) {
+	code = rxgk_misc_error();
+	goto done;
+    }
+
+ done:
+    (void)gss_release_buffer(&minor, &exported_name);
+    (void)gss_release_buffer(&minor, &display_name);
+
+    if (code != 0) {
+	rx_opaque_freeContents(&identity->data);
+	rx_opaque_freeContents(&identity->display);
+    }
+    return code;
+}
+
+static_inline char*
+call2host(struct rx_call *call, char *buf)
+{
+    return afs_inet_ntoa_r(rx_HostOf(rx_PeerOf(rx_ConnectionOf(call))),
+			   buf);
+}
+
+/* The results from a gss_accept_sec_context call that we care about. */
+struct gssasc_results {
+    gss_ctx_id_t gss_ctx;
+    afs_uint32 ret_flags;
+    afs_uint32 gss_lifetime;
+
+    /*
+     * Not actually a result from gss_accept_sec_context; instead this records
+     * when the gss_accept_sec_context function was called.
+     */
+    struct afs_time64 start_time;
+};
+
+/*
+ * Set a token expiration time.  Use the GSSAPI context lifetime as a guide,
+ * but also enforce local policy.
+ */
+static int
+get_expiration(struct gssasc_results *asc_res, struct afs_time64 *expiration)
+{
+    int code;
+    afs_uint32 gss_lifetime = asc_res->gss_lifetime;
+
+    if (gss_lifetime == GSS_C_INDEFINITE) {
+	gss_lifetime = MAX_LIFETIME;
+    }
+    if (gss_lifetime > MAX_LIFETIME) {
+	gss_lifetime = MAX_LIFETIME;
+    }
+
+    code = opr_time64_addSecs_safe(asc_res->start_time, gss_lifetime,
+				   expiration);
+    if (code != 0) {
+	return rxgk_misc_error();
+    }
+
+    if (opr_time64_lt(*expiration, opr_time64_now()) < 0) {
+	/*
+	 * Our calculated expiration time appears to be in the past. That
+	 * shouldn't happen, but make sure we're not giving the client a token
+	 * that is already expired.
+	 */
+	return rxgk_int_error(RXGK_EXPIRED);
+    }
+
+    return 0;
+}
+
+/*
+ * Run the gss_accept_sec_context() portions of SGSSNegotiate(). If this
+ * function returns an error, the call is aborted with that error (not packed
+ * in an RXGK_ClientInfo). If we return 0, but GSS_ERROR(*major) is true,
+ * *major and *minor are returned to the client, and we do not do the rest of
+ * the negotiation.
+ */
+static afs_int32
+negoserver_asc(struct rxgk_service_ctx *gk, struct rx_call *call,
+	       RXGK_Data *rxgk_token_in, RXGK_Data *rxgk_token_out,
+	       u_int *major, u_int *minor, struct gssasc_results *asc_res)
+{
+    afs_int32 code;
+    afs_uint32 dummy;
+    gss_buffer_desc gss_token_in, gss_token_out;
+    char hoststr[16];
+
+    memset(&gss_token_out, 0, sizeof(gss_token_out));
+
+    gss_token_in.length = rxgk_token_in->len;
+    gss_token_in.value = rxgk_token_in->val;
+
+    asc_res->start_time = opr_time64_now();
+
+    *major = gss_accept_sec_context(minor, &asc_res->gss_ctx,
+				    gk->gss_creds, &gss_token_in,
+				    GSS_C_NO_CHANNEL_BINDINGS,
+				    NULL /* src_name */,
+				    NULL /* mech_type */,
+				    &gss_token_out,
+				    &asc_res->ret_flags,
+				    &asc_res->gss_lifetime,
+				    NULL /* delegated_cred_handle */);
+    if (GSS_ERROR(*major)) {
+	/*
+	 * Though the GSS negotiation failed, the RPC shall succeed, so we can
+	 * return the GSS major and minor codes.
+	 */
+	code = 0;
+	goto done;
+    }
+    if ((*major & GSS_S_CONTINUE_NEEDED) != 0) {
+	/*
+	 * GSS didn't report an error, but it also says we're not done; we need
+	 * another round-trip to complete negotation. We don't support
+	 * multi-round negotation yet, so just report an error in this case for
+	 * now.
+	 */
+	ViceLog_limit(0, ("rxgk: gss_accept_sec_context reported additional "
+			  "rounds of negotation are required for client %s. We "
+			  "don't support this yet, so returning an error.\n",
+			  call2host(call, hoststr)));
+	code = RXGK_INCONSISTENCY;
+	goto done;
+    }
+    if (*major != GSS_S_COMPLETE) {
+	ViceLog_limit(0, ("rxgk: gss_accept_sec_context returned unrecognized "
+			  "non-error major code 0x%x. Returning error to "
+			  "client %s.\n", *major, call2host(call, hoststr)));
+	code = RXGK_INCONSISTENCY;
+	goto done;
+    }
+
+    code = gss2xdr_copy(&gss_token_out, rxgk_token_out);
+    if (code != 0) {
+	goto done;
+    }
+
+ done:
+    (void)gss_release_buffer(&dummy, &gss_token_out);
+    return code;
+}
+
+/*
+ * Run the portions of GSSNegotiate() that generate the contents of the
+ * RXGK_ClientInfo structure. Errors from this function are stored in the
+ * 'errorcode' field of the RXGK_ClientInfo and given back to the client, and
+ * do not result in the Rx call being aborted.
+ */
+static afs_int32
+fill_clientinfo(struct rxgk_service_ctx *gk, struct rx_call *call,
+		RXGK_StartParams *client_start, struct gssasc_results *asc_res,
+		RXGK_ClientInfo *info)
+{
+    afs_int32 code;
+    RXGK_TokenInfo localinfo;
+    gss_buffer_desc k0;
+    rxgk_key key = NULL;
+    afs_int32 kvno = 0, enctype = 0;
+    afs_uint32 major, minor;
+    struct rx_opaque k0_data = RX_EMPTY_OPAQUE;
+    PrAuthName identity;
+    ssize_t nonce_len;
+    gss_name_t client_name, server_name;
+    int selfauth;
+    int is_open;
+
+    memset(&k0, 0, sizeof(k0));
+    memset(&localinfo, 0, sizeof(localinfo));
+    memset(&identity, 0, sizeof(identity));
+    memset(&client_name, 0, sizeof(client_name));
+    memset(&server_name, 0, sizeof(server_name));
+
+    /* Make our initial expiration value invalid, not 'forever'. */
+    localinfo.expiration.clunks = -1;
+
+    /* We must have mutual authn, message confidentiality, and message
+     * integrity. */
+    if ((asc_res->ret_flags & GSS_C_MUTUAL_FLAG) == 0
+	|| (asc_res->ret_flags & GSS_C_CONF_FLAG) == 0
+	|| (asc_res->ret_flags & GSS_C_INTEG_FLAG) == 0) {
+	code = rxgk_int_error(RXGK_BAD_QOP);
+	goto done;
+    }
+
+    /* Get a validated local copy of the various parameters in localinfo. */
+    code = process_client_params(client_start, &localinfo);
+    if (code != 0) {
+	goto done;
+    }
+
+    code = get_expiration(asc_res, &localinfo.expiration);
+    if (code != 0) {
+	goto done;
+    }
+
+    /* Fill the ClientInfo from the source of truth. */
+    tokeninfo_to_clientinfo(&localinfo, info);
+
+    /*
+     * According to the rxgk spec, server_nonce's length should be the
+     * key-generation seed length of our enctype. Also make sure it's at least
+     * MIN_NONCE_LEN long, to make sure we don't set a tiny one.
+     */
+    nonce_len = rxgk_etype_to_len(info->enctype);
+    if (nonce_len < MIN_NONCE_LEN)
+	nonce_len = MIN_NONCE_LEN;
+    code = rxgk_nonce(&info->server_nonce, nonce_len);
+    if (code != 0) {
+	goto done;
+    }
+
+    code = get_startparams_mic(asc_res->gss_ctx, client_start, &info->mic);
+    if (code != 0) {
+	goto done;
+    }
+
+    code = rxgk_make_k0(asc_res->gss_ctx, &client_start->client_nonce,
+			&info->server_nonce, localinfo.enctype, &k0);
+    if (code != 0) {
+	goto done;
+    }
+
+    /*
+     * Get the name of the client (that is, the identity; e.g., the krb5
+     * princ), and see if it's the same as the server. If it is, then treat
+     * this as localauth creds below (selfauth).
+     *
+     * Note that we get the server_name here, and we don't just use the name we
+     * gave to gss_acquire_cred() during startup. The name given to
+     * gss_acquire_cred() may be, e.g., "afs3-foo@server" (which becomes the
+     * krb5 name "afs3-foo/server@"). But server_name here will be the full
+     * krb5 princ name "afs3-foo/server.example.com@REALM", which is what we
+     * need.
+     */
+    is_open = 0;
+    major = gss_inquire_context(&minor, asc_res->gss_ctx,
+				&client_name, &server_name,
+				NULL /* lifetime */,
+				NULL /* mech */,
+				NULL /* flags */,
+				NULL /* locally_initiated */,
+				&is_open);
+    if (GSS_ERROR(major)) {
+	log_gss_error_limit("gss_inquire_context", major, minor);
+	code = RXGK_INCONSISTENCY;
+	goto done;
+    }
+    if (!is_open) {
+	/*
+	 * Apparently the GSS context isn't fully established? That shouldn't
+	 * happen, check just in case.
+	 */
+	ViceLog_limit(0, ("rxgk: Internal error: gss_inquire_context() "
+		      "indicated incomplete context\n"));
+	code = RXGK_INCONSISTENCY;
+	goto done;
+    }
+
+    selfauth = 0;
+    major = gss_compare_name(&minor, client_name, server_name, &selfauth);
+    if (GSS_ERROR(major)) {
+	log_gss_error_limit("gss_compare_name", major, minor);
+	code = RXGK_INCONSISTENCY;
+	goto done;
+    }
+
+    /* Get a key to encrypt the token in. */
+    code = (*gk->getkey)(gk->getkey_rock, &kvno, &enctype, &key);
+    if (code != 0) {
+	rxgk_int_error(code);
+	goto done;
+    }
+
+    k0_data.val = k0.value;
+    k0_data.len = k0.length;
+
+    if (selfauth) {
+	/*
+	 * If we're negotiating with ourself, print a token instead of
+	 * supplying an identity.
+	 */
+	code = rxgk_print_token(&info->token, &localinfo, &k0_data, key, kvno,
+				enctype);
+    } else {
+	code = fill_token_identity(&identity, client_name);
+	if (code != 0)
+	    goto done;
+
+	code = rxgk_make_token(&info->token, &localinfo, &k0_data, &identity,
+			       1, key, kvno, enctype);
+    }
+
+ done:
+    rxgk_release_key(&key);
+    xdrfree_PrAuthName(&identity);
+    (void)gss_release_buffer(&minor, &k0);
+    (void)gss_release_name(&minor, &client_name);
+    (void)gss_release_name(&minor, &server_name);
+    /* k0_data aliases k0; so don't free it */
+    return code;
+}
+
+/**
+ * The server-side implementation of RXGK_GSSNegotiate()
+ *
+ * This is the backend of the RXGK_GSSNegotiate() RPC, called from
+ * SRXGK_GSSNegotiate() when a GSS-API library is available.
+ *
+ * The behavior of this routine is specified in
+ * draft-wilkinson-afs3-rxgk-afs-11, an AFS-3 experimental standard.
+ */
+afs_int32
+SGSSNegotiate(struct rx_call *call, RXGK_StartParams *client_start,
+	      RXGK_Data *input_token_buffer, RXGK_Data *opaque_in,
+	      RXGK_Data *output_token_buffer, RXGK_Data *opaque_out,
+	      u_int *gss_major_status, u_int *gss_minor_status,
+	      RXGK_Data *rxgk_info)
+{
+    afs_int32 code;
+    afs_uint32 dummy;
+    RXGK_ClientInfo info;
+    struct gssasc_results asc_res;
+    struct rxgk_service_ctx *gk = NULL;
+    char hoststr[16];
+
+    memset(&info, 0, sizeof(info));
+    memset(&asc_res, 0, sizeof(asc_res));
+    *gss_major_status = *gss_minor_status = 0;
+
+    asc_res.gss_ctx = GSS_C_NO_CONTEXT;
+
+    code = get_ctx(call, &gk);
+    if (code != 0) {
+	goto done;
+    }
+
+    if (opaque_in->len > 0) {
+	/* We don't support multi-round negotiation yet. Abort. */
+	ViceLog_limit(0, ("rxgk: Client %s attempted multi-round GSS "
+			  "negotiation, which we don't support yet. Returning "
+			  "an error.\n", call2host(call, hoststr)));
+	code = RXGK_INCONSISTENCY;
+	goto done;
+    }
+
+    code = negoserver_asc(gk, call, input_token_buffer, output_token_buffer,
+			  gss_major_status, gss_minor_status, &asc_res);
+    if (code != 0 || GSS_ERROR(*gss_major_status)) {
+	goto done;
+    }
+
+    code = fill_clientinfo(gk, call, client_start, &asc_res, &info);
+    if (code != 0) {
+	/*
+	 * If we get an error post-gss_accept_sec_context, we are still able to
+	 * construct an encrypted ClientInfo. So we store the error code in the
+	 * ClientInfo so the client can trust the value we provide (since the
+	 * ClientInfo contents are encrypted, but an Rx abort code would not
+	 * be).
+	 */
+	xdrfree_RXGK_ClientInfo(&info);
+	memset(&info, 0, sizeof(info));
+	info.errorcode = code;
+	code = 0;
+    }
+
+    /* Wrap the ClientInfo response and pack it as an RXGK_Data. */
+    code = pack_clientinfo(asc_res.gss_ctx, &info, rxgk_info);
+
+ done:
+    (void)gss_delete_sec_context(&dummy, &asc_res.gss_ctx, GSS_C_NO_BUFFER);
+    xdrfree_RXGK_ClientInfo(&info);
+
+    return code;
+}
+
 #endif /* AFS_RXGK_GSS_ENV */
