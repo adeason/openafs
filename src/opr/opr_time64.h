@@ -94,6 +94,31 @@ opr_time64_toSecs(struct afs_time64 *in)
 }
 
 static_inline int
+opr_time64_addSecs(struct afs_time64 *in, afs_int64 secs)
+{
+    struct afs_time64 add;
+    int code;
+
+    code = opr_time64_fromSecs(secs, &add);
+    if (code != 0) {
+	return code;
+    }
+
+    if (add.clunks > 0) {
+	if (in->clunks > MAX_AFS_INT64 - add.clunks) {
+	    return ERANGE;
+	}
+    } else {
+	if (in->clunks < MIN_AFS_INT64 - add.clunks) {
+	    return ERANGE;
+	}
+    }
+
+    in->clunks += add.clunks;
+    return 0;
+}
+
+static_inline int
 opr_time64_cmp(struct afs_time64 *t1, struct afs_time64 *t2)
 {
     if (t1->clunks > t2->clunks) {
