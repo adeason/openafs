@@ -20,6 +20,7 @@
 #include <rx/rx.h>
 
 #include <afs/pthread_glock.h>
+#include <afs/afsutil.h>
 #include <afs/opr.h>
 
 #include "cellconfig.h"
@@ -426,6 +427,100 @@ afsconf_BuildServerSecurityObjects(void *rock,
     opr_Assert(code == 0);
 }
 
+#ifdef AFS_RXGK_ENV
+static void
+setup_rxgk(struct afsconf_bsso_info *info, struct rx_securityClass **classes,
+	   afs_int32 numClasses)
+{
+    struct afsconf_dir *dir = info->dir;
+    char *acceptor = NULL;
+    char *keytab = NULL, *keytab_free = NULL;
+    char *ktname;
+    struct rx_service *service;
+    char cellname[64];
+    struct rxgk_service_info svc_info;
+    int code;
+
+    if (info->type != AFSCONF_BSSO_VLSERVER) {
+	goto done;
+    }
+
+    code = asprintf(&keytab, "%s/%s", dir->name, AFSDIR_RXGK_KEYTAB_FILE);
+    if (code < 0) {
+	code = ENOMEM;
+	keytab = NULL;
+	goto error;
+    }
+
+    /*
+    * Setting KRB5_KTNAME is traditionally how some things say what keytab
+    * to use. Honor it, if it's set.
+    */
+    ktname = getenv("KRB5_KTNAME");
+    if (ktname != NULL && ktname[0] != '\0') {
+	keytab = ktname;
+	ViceLog(0, ("rxgk: Honoring KRB5_KTNAME to override location of acceptor creds\n"));
+
+    } else {
+	code = asprintf(&keytab_free, "%s/%s", dir->name, AFSDIR_RXGK_KEYTAB_FILE);
+	if (code < 0) {
+	    code = ENOMEM;
+	    keytab_free = NULL;
+	    goto error;
+	}
+	keytab = keytab_free;
+    }
+
+    service = rx_NewServiceHost(info->host, 0, RXGK_SERVICE_ID, "RXGK",
+				classes, numClasses, RXGK_ExecuteRequest);
+    if (service == NULL) {
+	ViceLog(0, ("rxgk: rx_NewServiceHost failed\n"));
+	code = RXGK_INCONSISTENCY;
+	goto error;
+    }
+
+    code = afsconf_GetLocalCell(dir, cellname, sizeof(cellname));
+    if (code != 0) {
+	ViceLog(0, ("rxgk: afsconf_GetLocalCell failed with %d\n", code));
+	goto error;
+    }
+
+    code = asprintf(&acceptor, "afs-rxgk@_afs.%s", cellname);
+    if (code < 0) {
+	acceptor = NULL;
+	goto error;
+    }
+
+    memset(&svc_info, 0, sizeof(svc_info));
+    svc_info.acceptor = acceptor;
+    svc_info.keytab = keytab;
+    svc_info.getkey = afsconf_GetRXGKKey;
+    svc_info.getkey_rock = dir;
+
+    code = rxgk_service_init(service, &svc_info);
+    if (code != 0) {
+	ViceLog(0, ("rxgk: rxgk_setup_service failed with %d\n", code));
+	goto error;
+    }
+
+    rx_SetMinProcs(service, 2);
+    rx_SetMinProcs(service, 4);
+
+ error:
+    if (code != 0) {
+	/* Don't treat gss errors as fatal errors; just leave gss broken
+	 * and continue as if we didn't encounter an error. */
+	ViceLog(0, ("rxgk: Error %d while setting up rxgk service. "
+		    "Non-localauth rxgk will probably not function "
+		    "properly.\n", code));
+    }
+
+ done:
+    free(acceptor);
+    free(keytab_free);
+}
+#endif /* AFS_RXGK_ENV */
+
 /*!
  * Build a set of security classes suitable for a server accepting
  * incoming connections
@@ -439,6 +534,16 @@ afsconf_BuildServerSecurityObjects_int(struct afsconf_bsso_info *info,
     int code;
 
     if (dir == NULL || classes == NULL || numClasses == NULL) {
+	code = AFSCONF_FAILURE;
+	goto done;
+    }
+
+    switch (info->type) {
+    case AFSCONF_BSSO_DEFAULT:
+    case AFSCONF_BSSO_VLSERVER:
+	/* noop */
+	break;
+    default:
 	code = AFSCONF_FAILURE;
 	goto done;
     }
@@ -470,6 +575,7 @@ afsconf_BuildServerSecurityObjects_int(struct afsconf_bsso_info *info,
 #ifdef AFS_RXGK_ENV
     (*classes)[RX_SECIDX_GK] =
 	rxgk_NewServerSecurityObject(dir, afsconf_GetRXGKKey);
+    setup_rxgk(info, *classes, *numClasses);
 #endif
 
     code = 0;

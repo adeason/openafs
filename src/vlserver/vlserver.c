@@ -533,8 +533,10 @@ main(int argc, char **argv)
     memset(wr_HostAddress, 0, sizeof(wr_HostAddress));
     initialize_dstats();
 
+    bsso.type = AFSCONF_BSSO_VLSERVER;
     bsso.dir = tdir;
     bsso.logger = FSLog;
+    bsso.host = host;
     code = afsconf_BuildServerSecurityObjects_int(&bsso, &securityClasses,
 						  &numClasses);
     if (code) {
