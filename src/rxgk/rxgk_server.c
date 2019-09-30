@@ -744,7 +744,7 @@ static struct rx_securityOps rxgk_server_ops = {
     AFS_STRUCT_INIT(.op_DestroyConnection, rxgk_DestroyServerConnection),
     AFS_STRUCT_INIT(.op_GetStats,	rxgk_ServerGetStats),
     AFS_STRUCT_INIT(.op_SetConfiguration, NULL),
-    AFS_STRUCT_INIT(.op_Spare2,		NULL),			   /* spare 2 */
+    AFS_STRUCT_INIT(.op_GetConnSecInfo,	NULL),
     AFS_STRUCT_INIT(.op_Spare3,		NULL),			   /* spare 3 */
 };
 

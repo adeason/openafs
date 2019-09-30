@@ -36,6 +36,9 @@ rx_GetCallStatus
 rx_GetConnDeadTime
 rx_GetConnHardDeadTime
 rx_GetConnIdleDeadTime
+rx_GetConnSecExpiration
+rx_GetConnSecId
+rx_GetConnSecLevel
 rx_GetConnection
 rx_GetConnectionEpoch
 rx_GetConnectionId

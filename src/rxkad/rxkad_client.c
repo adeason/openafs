@@ -59,7 +59,7 @@ static struct rx_securityOps rxkad_client_ops = {
     AFS_STRUCT_INIT(.op_DestroyConnection, rxkad_DestroyConnection),
     AFS_STRUCT_INIT(.op_GetStats,	   rxkad_GetStats),
     AFS_STRUCT_INIT(.op_SetConfiguration,  NULL),
-    AFS_STRUCT_INIT(.op_Spare2,		   NULL),
+    AFS_STRUCT_INIT(.op_GetConnSecInfo,	   NULL),
     AFS_STRUCT_INIT(.op_Spare3,		   NULL),
 };
 
