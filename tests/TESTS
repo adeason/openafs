@@ -21,7 +21,9 @@ ptserver/pts-man
 rx/event
 rx/opaque
 rx/perf
+rxgk/conv
 rxgk/derive
+rxgk/krb5gss
 volser/vos-man
 volser/vos
 bucoord/backup-man
