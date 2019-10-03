@@ -71,6 +71,10 @@
 #include "ptprototypes.h"
 #include "afs/audit.h"
 
+#ifdef AFS_RXGK_ENV
+# include <rx/rxgk.h>
+#endif
+
 extern int restricted;
 extern int restrict_anonymous;
 extern struct ubik_dbase *dbase;
@@ -2072,6 +2076,31 @@ WhoIsThisIdentity(struct rx_identity *rxid, struct ubik_trans *at,
 {
     afs_int32 code;
 
+#ifdef AFS_RXGK_ENV
+    struct rx_identity *k4id = NULL;
+    if (rxid->kind == RX_ID_GSS) {
+	/* If we were given a GSS id, convert it to an old-style krb4 id, and
+	 * then proceed as if we were given the krb4 id. */
+	afs_uint32 conv_flags = 0;
+	if (pr_disableDotCheck) {
+	    conv_flags |= RXGK_524CONV_DISABLE_DOTCHECK;
+	}
+
+	code = rxgk_524_conv_id(rxid, conv_flags, &k4id);
+	if (code != 0) {
+	    goto done;
+	}
+
+	code = afsconf_Krb4LocalIdentity(prdir, &k4id);
+	if (code != 0) {
+	    goto done;
+	}
+
+	/* Now pretend 'k4id' is the id we were originally given. */
+	rxid = k4id;
+    }
+#endif
+
     if (rxid->kind == RX_ID_SUPERUSER) {
 	*aid = SYSADMINID;
 	code = 0;
@@ -2107,6 +2136,9 @@ WhoIsThisIdentity(struct rx_identity *rxid, struct ubik_trans *at,
     }
 
  done:
+#ifdef AFS_RXGK_ENV
+    rx_identity_free(&k4id);
+#endif
     return code;
 }
 

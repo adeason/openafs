@@ -99,4 +99,8 @@ extern afs_int32 Initdb(void);
 
 /* All ptuser prototypes are in ptuser.h - for public consumption ... */
 
+/* ptserver.c */
+
+extern int pr_disableDotCheck;
+
 #endif
