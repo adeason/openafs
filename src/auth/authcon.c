@@ -584,6 +584,8 @@ setup_rxgk(struct afsconf_bsso_info *info, struct rx_securityClass **classes,
     svc_info.keytab = keytab;
     svc_info.getkey = afsconf_GetRXGKKey;
     svc_info.getkey_rock = dir;
+    svc_info.getfskey = info->getfskey;
+    svc_info.getfskey_rock = info->getfskey_rock;
 
     code = rxgk_service_init(service, &svc_info);
     if (code != 0) {

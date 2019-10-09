@@ -90,13 +90,23 @@ main(void)
     afsUUID destination = { 0x8484c962, 0x5d1d, 0x4558, 0xb6, 0x52,
 			    { 0x56, 0xa5, 0x1e, 0x44, 0x25, 0x70 } };
 
-    plan(4*2);
+    plan(6*2);
 
     for (afstest_Scan(test_cases, tc, tc_i)) {
 	rxgk_key k1 = NULL;
 	rxgk_key got_key = NULL;
 	afs_int32 got_enctype;
 	struct rx_opaque got_keydata = RX_EMPTY_OPAQUE;
+
+	code = rxgk_afscombine1_keydata(&got_keydata, tc->combined_enctype,
+					&tc->k1_keydata, tc->k1_enctype,
+					&destination);
+	is_int(code, 0,
+	       "[%d] rxgk_afscombine1_keydata() == 0", tc_i);
+	is_opaque(&got_keydata, &tc->combined_keydata,
+		  "[%d] rxgk_afscombine1_keydata() data", tc_i);
+
+	rx_opaque_freeContents(&got_keydata);
 
 	code = rxgk_make_key(&k1, tc->k1_keydata.val, tc->k1_keydata.len,
 			     tc->k1_enctype);
