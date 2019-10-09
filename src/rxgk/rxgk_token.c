@@ -43,6 +43,7 @@
 #include <rx/xdr.h>
 #include <rx/rx_opaque.h>
 #include <rx/rxgk.h>
+#include <afs/afsutil.h>
 #include <errno.h>
 
 #include "rxgk_private.h"
@@ -349,9 +350,11 @@ rxgk_extract_token(RXGK_Data *tc, RXGK_Token *out, rxgk_getkey_func getkey,
     return ret;
 }
 
-/* NEVER call this function directly (except from rxgk_make_token or
- * rxgk_print_token). Call rxgk_make_token or rxgk_print_token instead. See
- * rxgk_make_token for info about our arguments. */
+/*
+ * NEVER call this function directly, except from rxgk_make_token,
+ * rxgk_make_token_printedok, or rxgk_print_token; call those functions
+ * instead. See rxgk_make_token for info about our arguments.
+ */
 static afs_int32
 make_token(struct rx_opaque *out, RXGK_TokenInfo *info,
 	   struct rx_opaque *k0, PrAuthName *identities,
@@ -403,7 +406,7 @@ make_token(struct rx_opaque *out, RXGK_TokenInfo *info,
  * Note that you cannot make printed tokens with this function ('nids' must be
  * greater than 0). This is a deliberate restriction to try to avoid
  * accidentally creating printed tokens.  Use rxgk_print_token() instead to
- * make printed tokens.
+ * make printed tokens, or rxgk_make_token_printedok().
  *
  * @param[out] out	The encoded rxgk token (RXGK_TokenContainer).
  * @param[in] info	RXGK_Tokeninfo describing the token to be produced.
@@ -423,10 +426,25 @@ rxgk_make_token(struct rx_opaque *out, RXGK_TokenInfo *info,
 {
     if (nids == 0 || identities == NULL) {
 	/* You cannot make printed tokens with this function; use
-	 * rxgk_print_token instead. */
+	 * rxgk_make_token_printedok/rxgk_print_token instead. */
 	memset(out, 0, sizeof(*out));
 	return rxgk_misc_error();
     }
+    return make_token(out, info, k0, identities, nids, key, kvno, enctype);
+}
+
+/*
+ * Same as rxgk_make_token, but you are allowed to make printed or non-printed
+ * tokens. This should probably only be used when performing a CombineTokens
+ * operation with a single token; if you're calling this to do something else,
+ * double check you are not making a mistake.
+ */
+afs_int32
+rxgk_make_token_printedok(struct rx_opaque *out, RXGK_TokenInfo *info,
+			  struct rx_opaque *k0, PrAuthName *identities,
+			  int nids, rxgk_key key, afs_int32 kvno,
+			  afs_int32 enctype)
+{
     return make_token(out, info, k0, identities, nids, key, kvno, enctype);
 }
 

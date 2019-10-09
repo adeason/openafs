@@ -832,6 +832,10 @@ struct rxgk_service_ctx {
     /* Callback to get our long-term key to use for encrypting tokens. */
     rxgk_getkey_func getkey;
     void *getkey_rock;
+
+    /* Callback to get fileserver-specific keys to use for encrypting tokens. */
+    rxgk_getfskey_func getfskey;
+    void *getfskey_rock;
 };
 
 #if HAVE_KRB5_GSS_REGISTER_ACCEPTOR_IDENTITY
@@ -966,6 +970,9 @@ rxgk_service_init(struct rx_service *svc,
     gk->getkey = info->getkey;
     gk->getkey_rock = info->getkey_rock;
 
+    gk->getfskey = info->getfskey;
+    gk->getfskey_rock = info->getfskey_rock;
+
     code = service_init_gss(gk, info);
     if (code != 0) {
 	/*
@@ -1031,8 +1038,13 @@ process_client_params(RXGK_StartParams *params, RXGK_TokenInfo *info)
     return 0;
 }
 
+/*
+ * 'needs_gss' indicates whether the caller needs to use our gss-related fields
+ * (that is, the caller is for SRXGK_GSSNegotiate). If 'needs_gss' is nonzero,
+ * we check that our gss-related fields are suitable for use.
+ */
 static afs_int32
-get_ctx(struct rx_call *call, struct rxgk_service_ctx **a_gk)
+get_ctx(int needs_gss, struct rx_call *call, struct rxgk_service_ctx **a_gk)
 {
     struct rx_service *svc;
     struct rxgk_service_ctx *gk;
@@ -1045,43 +1057,46 @@ get_ctx(struct rx_call *call, struct rxgk_service_ctx **a_gk)
 	return RXGK_INCONSISTENCY;
     }
 
-    if (!gk->gss_ok) {
-	/* If GSS is not setup, pretend this RPC doesn't exist. */
-	return RXGEN_OPCODE;
-    }
-
-    if (gk->gss_sname == GSS_C_NO_NAME ||
-	gk->gss_sname == NULL ||
-	gk->gss_creds == GSS_C_NO_CREDENTIAL ||
-	gk->gss_creds == NULL ||
-	gk->getkey == NULL) {
-
-	ViceLog_limit(0, ("rxgk: internal error: invalid GSS context for "
-			  "service %p\n", svc));
-	return RXGK_INCONSISTENCY;
-    }
-
-    if (gk->gss_creds_expire.clunks > 0) {
-	struct afs_time64 now;
-
-	if (opr_time64_now(&now) != 0) {
-	    return rxgk_misc_error();
+    if (needs_gss) {
+	if (!gk->gss_ok) {
+	    /* If GSS is not setup, pretend this RPC doesn't exist. */
+	    return RXGEN_OPCODE;
 	}
 
-	if (opr_time64_cmp(&gk->gss_creds_expire, &now) < 0) {
-	    /*
-	     * Our acceptor creds have expired? This is usually impossible; we
-	     * don't handle recovering from this yet, but at least log what
-	     * happened.
-	     */
-	    ViceLog_limit(0,
-		("rxgk: Our acceptor creds have expired (%lld < %lld). GSS "
-		 "negotiation will probably always fail from now on. This "
-		 "should not normally happen; please file a bug.\n",
-		 gk->gss_creds_expire.clunks, now.clunks));
+	if (gk->gss_sname == GSS_C_NO_NAME ||
+	    gk->gss_sname == NULL ||
+	    gk->gss_creds == GSS_C_NO_CREDENTIAL ||
+	    gk->gss_creds == NULL ||
+	    gk->getkey == NULL) {
+
+	    ViceLog_limit(0, ("rxgk: internal error: invalid GSS context for "
+			      "service %p\n", svc));
 	    return RXGK_INCONSISTENCY;
 	}
+
+	if (gk->gss_creds_expire.clunks > 0) {
+	    struct afs_time64 now;
+
+	    if (opr_time64_now(&now) != 0) {
+		return rxgk_misc_error();
+	    }
+
+	    if (opr_time64_cmp(&gk->gss_creds_expire, &now) < 0) {
+		/*
+		 * Our acceptor creds have expired? This is usually impossible; we
+		 * don't handle recovering from this yet, but at least log what
+		 * happened.
+		 */
+		ViceLog_limit(0,
+		    ("rxgk: Our acceptor creds have expired (%lld < %lld). GSS "
+		     "negotiation will probably always fail from now on. This "
+		     "should not normally happen; please file a bug.\n",
+		     gk->gss_creds_expire.clunks, now.clunks));
+		return RXGK_INCONSISTENCY;
+	    }
+	}
     }
+
     *a_gk = gk;
     return 0;
 }
@@ -1582,7 +1597,7 @@ SGSSNegotiate(struct rx_call *call, RXGK_StartParams *client_start,
     asc_res.gss_ctx = GSS_C_NO_CONTEXT;
     asc_res.client_name = GSS_C_NO_NAME;
 
-    code = get_ctx(call, &gk);
+    code = get_ctx(1, call, &gk);
     if (code != 0) {
 	goto done;
     }
@@ -1625,6 +1640,130 @@ SGSSNegotiate(struct rx_call *call, RXGK_StartParams *client_start,
     (void)gss_release_name(&dummy, &asc_res.client_name);
     xdrfree_RXGK_ClientInfo(&info);
 
+    return code;
+}
+
+static afs_int32
+CombineTokens_single(struct rxgk_service_ctx *gk, RXGK_Data *user_tok,
+		     RXGK_CombineOptions *options, afsUUID *destination,
+		     rxgk_key fskey, afs_int32 fskey_kvno, afs_int32 fskey_enctype,
+		     RXGK_Data *new_token, RXGK_TokenInfo *info)
+{
+    afs_int32 code;
+    RXGK_Token token;
+    RXGK_Data combo_keydata;
+    rxgk_key combo_key = NULL;
+
+    memset(&token, 0, sizeof(token));
+    memset(info, 0, sizeof(*info));
+
+    code = rxgk_choose_enctype(&options->enctypes, &info->enctype);
+    if (code != 0) {
+	goto done;
+    }
+
+    code = rxgk_choose_level(options->levels.val, options->levels.len,
+			     &info->level);
+    if (code != 0) {
+	goto done;
+    }
+
+    code = rxgk_extract_token(user_tok, &token, gk->getkey, gk->getkey_rock);
+    if (code != 0) {
+	goto done;
+    }
+
+    code = rxgk_afscombine1_keydata(&combo_keydata, info->enctype, &token.K0,
+				    token.enctype, destination);
+    if (code != 0) {
+	goto done;
+    }
+
+    info->lifetime = token.lifetime;
+    info->bytelife = token.bytelife;
+    info->expiration = token.expirationtime;
+
+    code = rxgk_make_token_printedok(new_token, info, &combo_keydata,
+				     token.identities.val,
+				     token.identities.len,
+				     fskey, fskey_kvno, fskey_enctype);
+    if (code != 0) {
+	goto done;
+    }
+
+ done:
+    xdrfree_RXGK_Token(&token);
+    rxgk_release_key(&combo_key);
+    return code;
+}
+
+afs_int32
+SAFSCombineTokens(struct rx_call *call, RXGK_Data *user_tok,
+		  RXGK_Data *cm_tok, RXGK_CombineOptions *options,
+		  afsUUID *destination, RXGK_Data *new_token,
+		  RXGK_TokenInfo *info)
+{
+    afs_int32 code;
+    struct rx_connection *conn;
+    struct rxgk_service_ctx *gk = NULL;
+    struct rxgk_sconn *sc;
+    afs_int32 idx;
+    rxgk_key fskey = NULL;
+    afs_int32 enctype = 0;
+    afs_int32 kvno = 0;
+    char hoststr[16];
+
+    conn = rx_ConnectionOf(call);
+    idx = rx_SecurityClassOf(conn);
+    if (idx != RX_SECIDX_GK) {
+	/* For non-rxgk conns, just pretend this RPC doesn't exist. */
+	return rxgk_int_error(RXGEN_OPCODE);
+    }
+
+    sc = rx_GetSecurityData(conn);
+    if (sc->level == RXGK_LEVEL_CLEAR) {
+	/* The rxgk spec prohibits AFSCombineTokens calls over CLEAR conns. */
+	ViceLog_limit(0, ("rxgk: client %s tried to call AFSCombineTokens over "
+			  "a CLEAR connection. This is prohibited.\n",
+			  call2host(call, hoststr)));
+	return RXGK_NOTAUTH;
+    }
+
+    if (cm_tok->len != 0) {
+	/* We don't support combining with cache manager tokens yet. */
+	ViceLog_limit(0, ("rxgk: client %s tried to call AFSCombineTokens with "
+			  "a cache manager token. We do not support this yet; "
+			  "returning an error.\n",
+			  call2host(call, hoststr)));
+	return RXGK_NOTAUTH;
+    }
+
+    code = get_ctx(0, call, &gk);
+    if (code != 0) {
+	return code;
+    }
+
+    if (gk->getfskey == NULL) {
+	return rxgk_misc_error();
+    }
+
+    code = (*gk->getfskey)(gk->getfskey_rock, destination, &kvno, &enctype,
+			   &fskey);
+    if (code != 0) {
+	return rxgk_int_error(code);
+    }
+
+    if (fskey == NULL) {
+	/* The destination fileserver doesn't support rxgk. Indicate this to
+	 * the caller by returning an empty token, and blanked tokeninfo. */
+	memset(new_token, 0, sizeof(*new_token));
+	memset(info, 0, sizeof(*info));
+	return 0;
+    }
+
+    code = CombineTokens_single(gk, user_tok, options, destination, fskey,
+				kvno, enctype, new_token, info);
+    rxgk_release_key(&fskey);
     return code;
 }
 

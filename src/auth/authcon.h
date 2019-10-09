@@ -48,6 +48,8 @@ struct afsconf_bsso_info {
     /* IP address the server is bound to (in network byte order), if any. This
      * is passed to rx_NewServiceHost(). */
     afs_uint32 host;
+    rxgk_getfskey_func getfskey;
+    void *getfskey_rock;
 };
 
 int afsconf_BuildServerSecurityObjects_int(struct afsconf_bsso_info *info,
