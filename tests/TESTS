@@ -24,6 +24,7 @@ rx/opaque
 rx/perf
 rx/simple
 rx/xdr
+rxgk/combine
 rxgk/conv
 rxgk/derive
 rxgk/krb5gss
