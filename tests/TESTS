@@ -21,6 +21,7 @@ ptserver/pts-man
 rx/event
 rx/opaque
 rx/perf
+rxgk/combine
 rxgk/conv
 rxgk/derive
 rxgk/krb5gss
