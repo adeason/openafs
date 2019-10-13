@@ -166,6 +166,7 @@ AC_CONFIG_FILES([
     tests/common/Makefile
     tests/opr/Makefile
     tests/rx/Makefile
+    tests/rxgk/Makefile
     tests/tap/Makefile
     tests/util/Makefile
     tests/volser/Makefile])
