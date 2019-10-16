@@ -1260,13 +1260,13 @@ pack_clientinfo(gss_ctx_id_t gss_ctx, RXGK_ClientInfo *info,
 /*
  * Convert the given gss_name_t into both an exported name used for
  * authorization comparisons and a display name for display, placing
- * those in the appropriate fields of the PrAuthName structure, and
+ * those in the appropriate fields of the RXGK_PrAuthName structure, and
  * setting its type appropriately.
  *
  * @return rx errors
  */
 static afs_int32
-fill_token_identity(PrAuthName *identity, gss_name_t name)
+fill_token_identity(RXGK_PrAuthName *identity, gss_name_t name)
 {
     gss_buffer_desc exported_name, display_name;
     afs_uint32 major, minor;
@@ -1461,7 +1461,7 @@ fill_clientinfo(struct rxgk_service_ctx *gk, struct rx_call *call,
     afs_int32 kvno = 0, enctype = 0;
     afs_uint32 major, minor;
     struct rx_opaque k0_data = RX_EMPTY_OPAQUE;
-    PrAuthName identity;
+    RXGK_PrAuthName identity;
     ssize_t nonce_len;
     gss_name_t client_name, server_name;
     int selfauth;
@@ -1595,7 +1595,7 @@ fill_clientinfo(struct rxgk_service_ctx *gk, struct rx_call *call,
 
  done:
     rxgk_release_key(&key);
-    xdrfree_PrAuthName(&identity);
+    xdrfree_RXGK_PrAuthName(&identity);
     (void)gss_release_buffer(&minor, &k0);
     (void)gss_release_name(&minor, &client_name);
     (void)gss_release_name(&minor, &server_name);
