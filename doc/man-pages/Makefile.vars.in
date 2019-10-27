@@ -89,6 +89,8 @@ MAN_PAGES = \
   man1/pts.1 \
   man1/pts_adduser.1 \
   man1/pts_apropos.1 \
+  man1/pts_authnametoid.1 \
+  man1/pts_capabilities.1 \
   man1/pts_chown.1 \
   man1/pts_creategroup.1 \
   man1/pts_createuser.1 \
@@ -96,6 +98,7 @@ MAN_PAGES = \
   man1/pts_examine.1 \
   man1/pts_help.1 \
   man1/pts_interactive.1 \
+  man1/pts_listauthnames.1 \
   man1/pts_listentries.1 \
   man1/pts_listmax.1 \
   man1/pts_listowned.1 \
@@ -106,6 +109,7 @@ MAN_PAGES = \
   man1/pts_setfields.1 \
   man1/pts_setmax.1 \
   man1/pts_sleep.1 \
+  man1/pts_whoami.1 \
   man1/pts_source.1 \
   man1/restorevol.1 \
   man1/rxdebug.1 \
