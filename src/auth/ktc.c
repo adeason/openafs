@@ -464,6 +464,8 @@ ktc_GetTokenEx(char *cellName, struct ktc_setTokenData **tokenSet) {
     afs_int32 code;
     XDR xdrs;
 
+    memset(tbuffer, 0, sizeof(tbuffer));
+
     tp = tbuffer;
 
     /* If we have a cellName, write it out here */
@@ -572,6 +574,8 @@ GetToken(struct ktc_principal *aserver, struct ktc_token *atoken,
     if (aviceid) {
 	*aviceid = 0;
     }
+
+    memset(tbuffer, 0, sizeof(tbuffer));
 
     LOCK_GLOBAL_MUTEX;
 
