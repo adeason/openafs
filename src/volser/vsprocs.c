@@ -502,16 +502,14 @@ UV_SetSecurity(struct rx_securityClass *as, afs_int32 aindex)
     return 0;
 }
 
-/* bind to volser on <port> <aserver> */
-/* takes server address in network order, port in host order.  dumb */
-struct rx_connection *
-UV_Bind(afs_uint32 aserver, afs_int32 port)
+/* bind to volser on <aserver> */
+/* takes server address in network order. */
+int
+UV_BindVolser(afs_uint32 aserver, struct rx_connection **a_conn)
 {
-    struct rx_connection *tc;
-
-    tc = rx_NewConnection(aserver, htons(port), VOLSERVICE_ID, uvclass,
-			  uvindex);
-    return tc;
+    *a_conn = rx_NewConnection(aserver, htons(AFSCONF_VOLUMEPORT),
+			       VOLSERVICE_ID, uvclass, uvindex);
+    return 0;
 }
 
 static int
@@ -625,12 +623,11 @@ UV_NukeVolume(afs_uint32 server, afs_int32 partid, afs_uint32 volid)
     struct rx_connection *tconn;
     afs_int32 code;
 
-    tconn = UV_Bind(server, AFSCONF_VOLUMEPORT);
-    if (tconn) {
+    code = UV_BindVolser(server, &tconn);
+    if (code == 0) {
 	code = AFSVolNukeVolume(tconn, partid, volid);
 	rx_DestroyConnection(tconn);
-    } else
-	code = 0;
+    }
     return code;
 }
 
@@ -639,22 +636,24 @@ int
 UV_PartitionInfo64(afs_uint32 server, char *pname,
 		   struct diskPartition64 *partition)
 {
-    struct rx_connection *aconn;
+    struct rx_connection *aconn = NULL;
     afs_int32 code = 0;
 
-    aconn = UV_Bind(server, AFSCONF_VOLUMEPORT);
-    code = AFSVolPartitionInfo64(aconn, pname, partition);
-    if (code == RXGEN_OPCODE) {
-	struct diskPartition *dpp = malloc(sizeof(struct diskPartition));
-	code = AFSVolPartitionInfo(aconn, pname, dpp);
-	if (!code) {
-	    strncpy(partition->name, dpp->name, 32);
-	    strncpy(partition->devName, dpp->devName, 32);
-	    partition->lock_fd = dpp->lock_fd;
-	    partition->free = dpp->free;
-	    partition->minFree = dpp->minFree;
+    code = UV_BindVolser(server, &aconn);
+    if (code == 0) {
+	code = AFSVolPartitionInfo64(aconn, pname, partition);
+	if (code == RXGEN_OPCODE) {
+	    struct diskPartition *dpp = malloc(sizeof(struct diskPartition));
+	    code = AFSVolPartitionInfo(aconn, pname, dpp);
+	    if (!code) {
+		strncpy(partition->name, dpp->name, 32);
+		strncpy(partition->devName, dpp->devName, 32);
+		partition->lock_fd = dpp->lock_fd;
+		partition->free = dpp->free;
+		partition->minFree = dpp->minFree;
+	    }
+	    free(dpp);
 	}
-	free(dpp);
     }
     if (code) {
 	fprintf(STDERR, "Could not get information on partition %s\n", pname);
@@ -710,7 +709,7 @@ UV_CreateVolume3(afs_uint32 aserver, afs_int32 apart, char *aname,
 		 afs_int32 aspare3, afs_int32 aspare4, afs_uint32 * anewid,
 		 afs_uint32 * aroid, afs_uint32 * abkid)
 {
-    struct rx_connection *aconn;
+    struct rx_connection *aconn = NULL;
     afs_int32 tid;
     afs_int32 code;
     afs_int32 error;
@@ -728,7 +727,8 @@ UV_CreateVolume3(afs_uint32 aserver, afs_int32 apart, char *aname,
     init_volintInfo(&tstatus);
     tstatus.maxquota = aquota;
 
-    aconn = UV_Bind(aserver, AFSCONF_VOLUMEPORT);
+    code = UV_BindVolser(aserver, &aconn);
+    EGOTO(cfail, code, "Could not create volser connection.\n");
 
     if (aroid && *aroid) {
 	VPRINT1("Using RO volume ID %d.\n", *aroid);
@@ -878,7 +878,8 @@ UV_DeleteVolume(afs_uint32 aserver, afs_int32 apart, afs_uint32 avolid)
     }
 
     /* Whether volume is in the VLDB or not. Delete the volume on disk */
-    aconn = UV_Bind(aserver, AFSCONF_VOLUMEPORT);
+    code = UV_BindVolser(aserver, &aconn);
+    EGOTO(error_exit, code, "Could not create volser connection.\n");
 
     code = DoVolDelete(aconn, avolid, apart, "the", 0, NULL, NULL);
     if (code) {
@@ -1358,7 +1359,13 @@ UV_ConvertRO(afs_uint32 server, afs_uint32 partition, afs_uint32 volid,
 	}
     }
 
-    aconn = UV_Bind(server, AFSCONF_VOLUMEPORT);
+    code = UV_BindVolser(server, &aconn);
+    if (code != 0) {
+	EPRINT(code, "Could not create volser connection.\n");
+	PrintError("convertROtoRW ", code);
+	goto error_exit;
+    }
+
     code = AFSVolConvertROtoRWvolume(aconn, partition, volid);
     if (code) {
 	fprintf(STDERR,
@@ -1570,7 +1577,12 @@ UV_MoveVolume2(afs_uint32 afromvol, afs_uint32 afromserver, afs_int32 afrompart,
 	 * we have already done the move, but the volume
 	 * may still be existing physically on from fileserver
 	 */
-	fromconn = UV_Bind(afromserver, AFSCONF_VOLUMEPORT);
+	code = UV_BindVolser(afromserver, (struct rx_connection**)&fromconn);
+	if (code != 0) {
+	    error = code;
+	    EPRINT(code, "Could not create volser connection.\n");
+	    goto mfail;
+	}
 	pntg = 1;
 
 	code = DoVolDelete(fromconn, afromvol, afrompart,
@@ -1610,8 +1622,10 @@ UV_MoveVolume2(afs_uint32 afromvol, afs_uint32 afromserver, afs_int32 afrompart,
     }
 
     pntg = 1;
-    toconn = UV_Bind(atoserver, AFSCONF_VOLUMEPORT);	/* get connections to the servers */
-    fromconn = UV_Bind(afromserver, AFSCONF_VOLUMEPORT);
+    code = UV_BindVolser(atoserver, (struct rx_connection**)&toconn);	/* get connections to the servers */
+    EGOTO(mfail, code, "Could not create volser source connection.\n");
+    code = UV_BindVolser(afromserver, (struct rx_connection**)&fromconn);
+    EGOTO(mfail, code, "Could not create volser destination connection.\n");
     totid = 0;	/* initialize to uncreated */
 
     /* ***
@@ -2250,8 +2264,10 @@ UV_CopyVolume2(afs_uint32 afromvol, afs_uint32 afromserver, afs_int32 afrompart,
     MapHostToNetwork(&entry);
 
     pntg = 1;
-    toconn = UV_Bind(atoserver, AFSCONF_VOLUMEPORT);	/* get connections to the servers */
-    fromconn = UV_Bind(afromserver, AFSCONF_VOLUMEPORT);
+    code = UV_BindVolser(atoserver, (struct rx_connection**)&toconn);	/* get connections to the servers */
+    EGOTO(mfail, code, "Could not create volser source connection.\n");
+    code = UV_BindVolser(afromserver, (struct rx_connection**)&fromconn);
+    EGOTO(mfail, code, "Could not create volser destination connection.\n");
     fromtid = totid = 0;	/* initialize to uncreated */
 
     /* ***
@@ -2704,7 +2720,12 @@ UV_BackupVolume(afs_uint32 aserver, afs_int32 apart, afs_uint32 avolid)
 
     memset(&entry, 0, sizeof(entry));
 
-    aconn = UV_Bind(aserver, AFSCONF_VOLUMEPORT);
+    code = UV_BindVolser(aserver, &aconn);
+    if (code != 0) {
+	fprintf(STDERR, "Could not create volser connection.\n");
+	error = code;
+	goto bfail;
+    }
 
     /* the calls to VLDB will succeed only if avolid is a RW volume,
      * since we are following the RW hash chain for searching */
@@ -2900,7 +2921,8 @@ UV_CloneVolume(afs_uint32 aserver, afs_int32 apart, afs_uint32 avolid,
     volEntries volumeInfo;
     int type = 0;
 
-    aconn = UV_Bind(aserver, AFSCONF_VOLUMEPORT);
+    code = UV_BindVolser(aserver, &aconn);
+    EGOTO(bfail, code, "Could not create volser connection.\n");
 
     if (!aname) {
 	volumeInfo.volEntries_val = (volintInfo *) 0;
@@ -3046,9 +3068,11 @@ GetTrans(struct nvldbentry *vldbEntryPtr, afs_int32 index,
     *uptimePtr = 0;
 
     /* get connection to the replication site */
-    *connPtr = UV_Bind(vldbEntryPtr->serverNumber[index], AFSCONF_VOLUMEPORT);
-    if (!*connPtr)
-	goto fail;		/* server is down */
+    code = UV_BindVolser(vldbEntryPtr->serverNumber[index], connPtr);
+    if (code != 0) {
+	EPRINT(code, "Could not create volser connection.\n");
+	goto fail;
+    }
 
     volid = vldbEntryPtr->volumeId[ROVOL];
 
@@ -3491,10 +3515,9 @@ UV_ReleaseVolume(afs_uint32 afromvol, afs_uint32 afromserver,
     code = VolumeExists(afromserver, afrompart, cloneVolId);
     roexists = ((code == ENODEV) ? 0 : 1);
 
-    fromconn = UV_Bind(afromserver, AFSCONF_VOLUMEPORT);
-    if (!fromconn)
-	ONERROR(-1, afromserver,
-		"Cannot establish connection with server 0x%x\n");
+    code = UV_BindVolser(afromserver, &fromconn);
+    ONERROR(code, afromserver,
+	    "Could not create volser connection for 0x%x.\n");
 
     if (!complete_release) {
 	if (!roexists) {
@@ -3619,8 +3642,8 @@ UV_ReleaseVolume(afs_uint32 afromvol, afs_uint32 afromserver,
 		if ((entry.serverFlags[vldbindex] & VLSF_DONTUSE)) {
 		    continue;
 		}
-		conn = UV_Bind(entry.serverNumber[vldbindex], AFSCONF_VOLUMEPORT);
-		if (!conn) {
+		code = UV_BindVolser(entry.serverNumber[vldbindex], &conn);
+		if (code != 0) {
 		    fprintf(STDERR, "Cannot establish connection to server %s\n",
 		                    hostutil_GetNameByINet(entry.serverNumber[vldbindex]));
 		    justnewsites = 0;
@@ -4238,7 +4261,8 @@ UV_DumpVolume(afs_uint32 afromvol, afs_uint32 afromserver, afs_int32 afrompart,
     }
 
     /* get connections to the servers */
-    fromconn = UV_Bind(afromserver, AFSCONF_VOLUMEPORT);
+    code = UV_BindVolser(afromserver, (struct rx_connection**)&fromconn);
+    EGOTO(error_exit, code, "Could not create volser connection.\n");
 
     VEPRINT1("Starting transaction on volume %u...", afromvol);
     tmp = fromtid;
@@ -4334,7 +4358,8 @@ UV_DumpClonedVolume(afs_uint32 afromvol, afs_uint32 afromserver,
     }
 
     /* get connections to the servers */
-    fromconn = UV_Bind(afromserver, AFSCONF_VOLUMEPORT);
+    code = UV_BindVolser(afromserver, (struct rx_connection**)&fromconn);
+    EGOTO(error_exit, code, "Could not create volser connection.\n");
 
     VEPRINT1("Starting transaction on volume %u...", afromvol);
     code = AFSVolTransCreate_retry(fromconn, afromvol, afrompart, ITBusy, &fromtid);
@@ -4512,7 +4537,9 @@ UV_RestoreVolume2(afs_uint32 toserver, afs_int32 topart, afs_uint32 tovolid,
 
     pvolid = tovolid;
     pparentid = toparentid;
-    toconn = UV_Bind(toserver, AFSCONF_VOLUMEPORT);
+    code = UV_BindVolser(toserver, &toconn);
+    EGOTO(refail, code, "Could not create volser connection.\n");
+
     if (pvolid == 0) {		/*alot a new id if needed */
 	vcode = VLDB_GetEntryByName(tovolname, &entry);
 	if (vcode == VL_NOENT) {
@@ -4794,9 +4821,10 @@ UV_RestoreVolume2(afs_uint32 toserver, afs_int32 topart, afs_uint32 tovolid,
                              noresolve ? afs_inet_ntoa_r(entry.serverNumber[index], hoststr) :
 			     hostutil_GetNameByINet(entry.serverNumber[index]));
 		    } else {
-			tempconn =
-			    UV_Bind(entry.serverNumber[index],
-				    AFSCONF_VOLUMEPORT);
+			code =
+			    UV_BindVolser(entry.serverNumber[index],
+					  &tempconn);
+			EGOTO(refail, code, "Could not create volser connection.\n");
 
 			MapPartIdIntoName(entry.serverPartition[index],
 					  apartName);
@@ -5192,13 +5220,17 @@ int
 UV_ListPartitions(afs_uint32 aserver, struct partList *ptrPartList,
 		  afs_int32 * cntp)
 {
-    struct rx_connection *aconn;
+    struct rx_connection *aconn = NULL;
     struct pIDs partIds;
     struct partEntries partEnts;
     int i, j = 0, code;
 
     *cntp = 0;
-    aconn = UV_Bind(aserver, AFSCONF_VOLUMEPORT);
+    code = UV_BindVolser(aserver, &aconn);
+    if (code != 0) {
+	fprintf(stderr, "Could not create volser connection.\n");
+	goto out;
+    }
 
     partEnts.partEntries_len = 0;
     partEnts.partEntries_val = NULL;
@@ -5233,10 +5265,10 @@ UV_ListPartitions(afs_uint32 aserver, struct partList *ptrPartList,
 	free(partEnts.partEntries_val);
     }
 
-   /* out: */
     if (code)
 	fprintf(STDERR,
 		"Could not fetch the list of partitions from the server\n");
+ out:
     PrintError("", code);
     if (aconn)
 	rx_DestroyConnection(aconn);
@@ -5249,7 +5281,7 @@ int
 UV_ListVolumes(afs_uint32 aserver, afs_int32 apart, int all,
 	       struct volintInfo **resultPtr, afs_int32 * size)
 {
-    struct rx_connection *aconn;
+    struct rx_connection *aconn = NULL;
     afs_int32 code = 0;
     volEntries volumeInfo;
 
@@ -5258,14 +5290,18 @@ UV_ListVolumes(afs_uint32 aserver, afs_int32 apart, int all,
     volumeInfo.volEntries_val = (volintInfo *) 0;	/*this hints the stub to allocate space */
     volumeInfo.volEntries_len = 0;
 
-    aconn = UV_Bind(aserver, AFSCONF_VOLUMEPORT);
-    code = AFSVolListVolumes(aconn, apart, all, &volumeInfo);
-    if (code) {
-	fprintf(STDERR,
-		"Could not fetch the list of volumes from the server\n");
+    code = UV_BindVolser(aserver, &aconn);
+    if (code != 0) {
+	fprintf(STDERR, "Could not create volser connection.\n");
     } else {
-	*resultPtr = volumeInfo.volEntries_val;
-	*size = volumeInfo.volEntries_len;
+	code = AFSVolListVolumes(aconn, apart, all, &volumeInfo);
+	if (code) {
+	    fprintf(STDERR,
+		    "Could not fetch the list of volumes from the server\n");
+	} else {
+	    *resultPtr = volumeInfo.volEntries_val;
+	    *size = volumeInfo.volEntries_len;
+	}
     }
 
     if (aconn)
@@ -5313,7 +5349,7 @@ UV_XListVolumes(afs_uint32 a_serverID, afs_int32 a_partID, int a_all,
 		struct volintXInfo **a_resultPP,
 		afs_int32 * a_numEntsInResultP)
 {
-    struct rx_connection *rxConnP;	/*Ptr to the Rx connection involved */
+    struct rx_connection *rxConnP = NULL;	/*Ptr to the Rx connection involved */
     afs_int32 code;		/*Error code to return */
     volXEntries volumeXInfo;	/*Area for returned extended vol info */
 
@@ -5331,17 +5367,21 @@ UV_XListVolumes(afs_uint32 a_serverID, afs_int32 a_partID, int a_all,
      * Bind to the Volume Server port on the File Server machine in question,
      * then go for it.
      */
-    rxConnP = UV_Bind(a_serverID, AFSCONF_VOLUMEPORT);
-    code = AFSVolXListVolumes(rxConnP, a_partID, a_all, &volumeXInfo);
-    if (code)
-	fprintf(STDERR, "[UV_XListVolumes] Couldn't fetch volume list\n");
-    else {
-	/*
-	 * We got the info; pull out the pointer to where the results lie
-	 * and how many entries are there.
-	 */
-	*a_resultPP = volumeXInfo.volXEntries_val;
-	*a_numEntsInResultP = volumeXInfo.volXEntries_len;
+    code = UV_BindVolser(a_serverID, &rxConnP);
+    if (code != 0) {
+	fprintf(STDERR, "[UV_XListVolumes] Could not create volser connection.\n");
+    } else {
+	code = AFSVolXListVolumes(rxConnP, a_partID, a_all, &volumeXInfo);
+	if (code)
+	    fprintf(STDERR, "[UV_XListVolumes] Couldn't fetch volume list\n");
+	else {
+	    /*
+	     * We got the info; pull out the pointer to where the results lie
+	     * and how many entries are there.
+	     */
+	    *a_resultPP = volumeXInfo.volXEntries_val;
+	    *a_numEntsInResultP = volumeXInfo.volXEntries_len;
+	}
     }
 
     /*
@@ -5359,7 +5399,7 @@ int
 UV_ListOneVolume(afs_uint32 aserver, afs_int32 apart, afs_uint32 volid,
 		 struct volintInfo **resultPtr)
 {
-    struct rx_connection *aconn;
+    struct rx_connection *aconn = NULL;
     afs_int32 code = 0;
     volEntries volumeInfo;
 
@@ -5367,15 +5407,19 @@ UV_ListOneVolume(afs_uint32 aserver, afs_int32 apart, afs_uint32 volid,
     volumeInfo.volEntries_val = (volintInfo *) 0;	/*this hints the stub to allocate space */
     volumeInfo.volEntries_len = 0;
 
-    aconn = UV_Bind(aserver, AFSCONF_VOLUMEPORT);
-    code = ListOneVolume(aconn, apart, volid, &volumeInfo);
-    if (code) {
-	fprintf(STDERR,
-		"Could not fetch the information about volume %lu from the server\n",
-		(unsigned long)volid);
+    code = UV_BindVolser(aserver, &aconn);
+    if (code != 0) {
+	fprintf(STDERR, "Could not create volser connection.\n");
     } else {
-	*resultPtr = volumeInfo.volEntries_val;
+	code = ListOneVolume(aconn, apart, volid, &volumeInfo);
+	if (code != 0) {
+	    fprintf(STDERR,
+		    "Could not fetch the information about volume %lu from the server\n",
+		    (unsigned long)volid);
+	} else {
+	    *resultPtr = volumeInfo.volEntries_val;
 
+	}
     }
 
     if (aconn)
@@ -5416,7 +5460,7 @@ int
 UV_XListOneVolume(afs_uint32 a_serverID, afs_int32 a_partID, afs_uint32 a_volID,
 		  struct volintXInfo **a_resultPP)
 {
-    struct rx_connection *rxConnP;	/*Rx connection to Volume Server */
+    struct rx_connection *rxConnP = NULL;	/*Rx connection to Volume Server */
     afs_int32 code;		/*Error code */
     volXEntries volumeXInfo;	/*Area for returned info */
 
@@ -5433,19 +5477,24 @@ UV_XListOneVolume(afs_uint32 a_serverID, afs_int32 a_partID, afs_uint32 a_volID,
      * Bind to the Volume Server port on the File Server machine in question,
      * then go for it.
      */
-    rxConnP = UV_Bind(a_serverID, AFSCONF_VOLUMEPORT);
-    code = AFSVolXListOneVolume(rxConnP, a_partID, a_volID, &volumeXInfo);
-    if (code == 0 && volumeXInfo.volXEntries_len != 1) {
-	code = VOLSERFAILEDOP;
+    code = UV_BindVolser(a_serverID, &rxConnP);
+    if (code != 0) {
+	fprintf(STDERR, "[UV_XListOneVolume] Could not create volser connection.\n");
+    } else {
+	code = AFSVolXListOneVolume(rxConnP, a_partID, a_volID, &volumeXInfo);
+	if (code == 0 && volumeXInfo.volXEntries_len != 1) {
+	    code = VOLSERFAILEDOP;
+	}
+	if (code != 0) {
+	    fprintf(STDERR,
+		    "[UV_XListOneVolume] Couldn't fetch the volume information\n");
+	} else {
+	    /*
+	     * We got the info; pull out the pointer to where the results lie.
+	     */
+	    *a_resultPP = volumeXInfo.volXEntries_val;
+	}
     }
-    if (code)
-	fprintf(STDERR,
-		"[UV_XListOneVolume] Couldn't fetch the volume information\n");
-    else
-	/*
-	 * We got the info; pull out the pointer to where the results lie.
-	 */
-	*a_resultPP = volumeXInfo.volXEntries_val;
 
     /*
      * If we got an Rx connection, throw it away.
@@ -6147,7 +6196,11 @@ UV_SyncVolume(afs_uint32 aserver, afs_int32 apart, char *avolname, int flags)
 	    pcnt = 1;
 	}
 
-	aconn = UV_Bind(aserver, AFSCONF_VOLUMEPORT);
+	code = UV_BindVolser(aserver, &aconn);
+	if (code != 0) {
+	    fprintf(STDERR, "Could not create volser connection.\n");
+	    ERROR_EXIT(code);
+	}
 
 	/* If a volume ID were given, search for it on each partition */
 	if ((volumeid = atol(avolname))) {
@@ -6280,7 +6333,7 @@ UV_SyncVolume(afs_uint32 aserver, afs_int32 apart, char *avolname, int flags)
 int
 UV_SyncVldb(afs_uint32 aserver, afs_int32 apart, int flags, int force)
 {
-    struct rx_connection *aconn;
+    struct rx_connection *aconn = NULL;
     afs_int32 code, error = 0;
     int i, pfail;
     unsigned int j;
@@ -6297,7 +6350,11 @@ UV_SyncVldb(afs_uint32 aserver, afs_int32 apart, int flags, int force)
     volumeInfo.volEntries_val = (volintInfo *) 0;
     volumeInfo.volEntries_len = 0;
 
-    aconn = UV_Bind(aserver, AFSCONF_VOLUMEPORT);
+    code = UV_BindVolser(aserver, &aconn);
+    if (code != 0) {
+	fprintf(STDERR, "Could not create volser connection.\n");
+	ERROR_EXIT(code);
+    }
 
     /* Generate array of partitions to check */
     if (!(flags & 1)) {
@@ -6439,8 +6496,8 @@ VolumeExists(afs_uint32 server, afs_int32 partition, afs_uint32 volumeid)
     afs_int32 code = -1;
     volEntries volumeInfo;
 
-    conn = UV_Bind(server, AFSCONF_VOLUMEPORT);
-    if (conn) {
+    code = UV_BindVolser(server, &conn);
+    if (code == 0) {
 	volumeInfo.volEntries_val = (volintInfo *) 0;
 	volumeInfo.volEntries_len = 0;
 	code = ListOneVolume(conn, partition, volumeid, &volumeInfo);
@@ -6783,7 +6840,11 @@ UV_SyncServer(afs_uint32 aserver, afs_int32 apart, int flags, int force)
     if (flags & 2)
 	verbose = 1;
 
-    aconn = UV_Bind(aserver, AFSCONF_VOLUMEPORT);
+    code = UV_BindVolser(aserver, &aconn);
+    if (code != 0) {
+	fprintf(STDERR, "Could not create volser connection.\n");
+	ERROR_EXIT(code);
+    }
 
     /* Set up attributes to search VLDB  */
     memset(&attributes, 0, sizeof(attributes));
@@ -6948,7 +7009,14 @@ UV_RenameVolume(struct nvldbentry *entry, char oldname[], char newname[])
 	    error = VOLSERVLDB_ERROR;
 	    goto rvfail;
 	}
-	aconn = UV_Bind(entry->serverNumber[index], AFSCONF_VOLUMEPORT);
+
+	code = UV_BindVolser(entry->serverNumber[index], &aconn);
+	if (code != 0) {
+	    fprintf(STDERR, "Could not create volser connection.\n");
+	    error = code;
+	    goto rvfail;
+	}
+
 	code =
 	    AFSVolTransCreate_retry(aconn, entry->volumeId[RWVOL],
 			      entry->serverPartition[index], ITOffline, &tid);
@@ -6998,7 +7066,14 @@ UV_RenameVolume(struct nvldbentry *entry, char oldname[], char newname[])
 	    error = VOLSERVLDB_ERROR;
 	    goto rvfail;
 	}
-	aconn = UV_Bind(entry->serverNumber[index], AFSCONF_VOLUMEPORT);
+
+	code = UV_BindVolser(entry->serverNumber[index], &aconn);
+	if (code != 0) {
+	    fprintf(STDERR, "Could not create volser connection.\n");
+	    error = code;
+	    goto rvfail;
+	}
+
 	code =
 	    AFSVolTransCreate_retry(aconn, entry->volumeId[BACKVOL],
 			      entry->serverPartition[index], ITOffline, &tid);
@@ -7048,7 +7123,13 @@ UV_RenameVolume(struct nvldbentry *entry, char oldname[], char newname[])
     if (entry->flags & VLF_ROEXISTS) {	/*process the ro volumes */
 	for (i = 0; i < entry->nServers; i++) {
 	    if (entry->serverFlags[i] & VLSF_ROVOL) {
-		aconn = UV_Bind(entry->serverNumber[i], AFSCONF_VOLUMEPORT);
+		code = UV_BindVolser(entry->serverNumber[i], &aconn);
+		if (code != 0) {
+		    fprintf(STDERR, "Could not create volser connection.\n");
+		    error = code;
+		    goto rvfail;
+		}
+
 		code =
 		    AFSVolTransCreate_retry(aconn, entry->volumeId[ROVOL],
 				      entry->serverPartition[i], ITOffline,
@@ -7137,11 +7218,17 @@ UV_RenameVolume(struct nvldbentry *entry, char oldname[], char newname[])
 int
 UV_VolserStatus(afs_uint32 server, transDebugInfo ** rpntr, afs_int32 * rcount)
 {
-    struct rx_connection *aconn;
+    struct rx_connection *aconn = NULL;
     transDebugEntries transInfo;
     afs_int32 code = 0;
 
-    aconn = UV_Bind(server, AFSCONF_VOLUMEPORT);
+    code = UV_BindVolser(server, &aconn);
+    if (code != 0) {
+	fprintf(STDERR, "Could not create volser connection.\n");
+	PrintError("", code);
+	return code;
+    }
+
     transInfo.transDebugEntries_val = (transDebugInfo *) 0;
     transInfo.transDebugEntries_len = 0;
     code = AFSVolMonitor(aconn, &transInfo);
@@ -7170,13 +7257,17 @@ int
 UV_VolumeZap(afs_uint32 server, afs_int32 part, afs_uint32 volid)
 {
     afs_int32 error;
-    struct rx_connection *aconn;
+    struct rx_connection *aconn = NULL;
 
-    aconn = UV_Bind(server, AFSCONF_VOLUMEPORT);
-    error = DoVolDelete(aconn, volid, part,
-			"the", 0, NULL, NULL);
-    if (error == VNOVOL) {
-	EPRINT1(error, "Failed to start transaction on %u\n", volid);
+    error = UV_BindVolser(server, &aconn);
+    if (error != 0) {
+	EPRINT(error, "Could not create volser connection.\n");
+    } else {
+	error = DoVolDelete(aconn, volid, part,
+			    "the", 0, NULL, NULL);
+	if (error == VNOVOL) {
+	    EPRINT1(error, "Failed to start transaction on %u\n", volid);
+	}
     }
 
     PrintError("", error);
@@ -7193,10 +7284,10 @@ UV_SetVolume(afs_uint32 server, afs_int32 partition, afs_uint32 volid,
     afs_int32 tid = 0;
     afs_int32 code, error = 0, rcode;
 
-    conn = UV_Bind(server, AFSCONF_VOLUMEPORT);
-    if (!conn) {
-	fprintf(STDERR, "SetVolumeStatus: Bind Failed");
-	ERROR_EXIT(-1);
+    code = UV_BindVolser(server, &conn);
+    if (code != 0) {
+	fprintf(STDERR, "Could not create volser connection.\n");
+	ERROR_EXIT(code);
     }
 
     code = AFSVolTransCreate_retry(conn, volid, partition, transflag, &tid);
@@ -7243,10 +7334,10 @@ UV_SetVolumeInfo(afs_uint32 server, afs_int32 partition, afs_uint32 volid,
     afs_int32 tid = 0;
     afs_int32 code, error = 0, rcode;
 
-    conn = UV_Bind(server, AFSCONF_VOLUMEPORT);
-    if (!conn) {
-	fprintf(STDERR, "SetVolumeInfo: Bind Failed");
-	ERROR_EXIT(-1);
+    code = UV_BindVolser(server, &conn);
+    if (code != 0) {
+	fprintf(STDERR, "Could not create volser connection.\n");
+	ERROR_EXIT(code);
     }
 
     code = AFSVolTransCreate_retry(conn, volid, partition, ITOffline, &tid);
@@ -7287,7 +7378,8 @@ UV_GetSize(afs_uint32 afromvol, afs_uint32 afromserver, afs_int32 afrompart,
 
 
     /* get connections to the servers */
-    aconn = UV_Bind(afromserver, AFSCONF_VOLUMEPORT);
+    code = UV_BindVolser(afromserver, &aconn);
+    EGOTO(error_exit, code, "Could not create volser connection.\n");
 
     VPRINT1("Starting transaction on volume %u...", afromvol);
     code = AFSVolTransCreate_retry(aconn, afromvol, afrompart, ITBusy, &tid);
