@@ -122,4 +122,5 @@ extern int UV_ConvertRO(afs_uint32 server, afs_uint32 partition, afs_uint32 voli
 			struct nvldbentry *entry);
 extern int verbose;
 extern int noresolve;
+extern int uv_rxgk_novldb;
 #endif

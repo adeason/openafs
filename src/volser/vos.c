@@ -81,6 +81,7 @@ enum {
     COMMONPARM_OFFSET_NORESOLVE = 30,
     COMMONPARM_OFFSET_CONFIG    = 31,
     COMMONPARM_OFFSET_RXGK      = 32,
+    COMMONPARM_OFFSET_RXGK_NOVLDB = 33,
 };
 
 #define COMMONPARMS \
@@ -101,6 +102,8 @@ cmd_AddParmAtOffset(ts, COMMONPARM_OFFSET_CONFIG, \
     "-config", CMD_SINGLE, CMD_OPTIONAL, "config location"); \
 cmd_AddParmAtOffset(ts, COMMONPARM_OFFSET_RXGK, \
     "-rxgk", CMD_SINGLE, CMD_OPTIONAL, "rxgk security level to use"); \
+cmd_AddParmAtOffset(ts, COMMONPARM_OFFSET_RXGK_NOVLDB, \
+    "-rxgk-novldb", CMD_FLAG, CMD_OPTIONAL, "do not get per-server rxgk creds from vldb"); \
 
 #define ERROR_EXIT(code) do { \
     error = (code); \
@@ -5896,6 +5899,12 @@ MyBeforeProc(struct cmd_syndesc *as, void *arock)
 
 	free(rxgk_seclevel_str);
 	rxgk_seclevel_str = NULL;
+    }
+
+    cmd_OptionAsFlag(as, COMMONPARM_OFFSET_RXGK_NOVLDB, &uv_rxgk_novldb);
+    if (uv_rxgk_novldb) {
+	/* If -rxgk-novldb, also turn on -rxgk if it wasn't already given. */
+	secFlags |= AFSCONF_SECOPTS_RXGK;
     }
 
     code = vsu_ClientInit(confdir, tcell, secFlags, UV_SetSecurity, &cstruct);

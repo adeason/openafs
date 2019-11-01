@@ -291,6 +291,21 @@ causes B<vos> to use rxgk without any per-packet cryptography.
 By default, B<vos> uses rxkad credentials.  B<vos> falls back to unauthenticated
 connections if credentials are not available.
 
+=item B<-rxgk-novldb>
+
+By default, when using rxgk, B<vos> contacts the VLDB to get per-server rxgk
+credentials to contact the B<volserver>. This allows B<vos> to work with
+servers that use per-server encryption keys, and allows B<vos> to check whether
+the given server supports rxgk. However, if the VLDB cannot be reached or is
+misconfigured, we will not be able to obtain our rxgk credentials and the
+B<vos> command will fail before even trying to contact the B<volserver>.
+
+If B<-rxgk-novldb> is given, B<vos> instead uses your rxgk credentials
+directly, and skips contacting the VLDB. So with this option, B<vos> will still
+be able to run if the VLDB is unavailable or misconfigured, similar to how
+authentication works with rxkad. But when using this option, B<vos> will not be
+able to talk to other servers that use per-server encryption keys.
+
 =back
 
 =head1 PRIVILEGE REQUIRED
