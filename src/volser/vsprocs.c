@@ -55,8 +55,17 @@
 #include "vsutils_prototypes.h"
 #include "lockprocs_prototypes.h"
 
+#ifdef AFS_RXGK_ENV
+# include <rx/rxgk.h>
+#endif
+
 extern struct ubik_client *cstruct;
 int verbose = 0, noresolve = 0;
+int uv_rxgk_novldb;
+
+#ifdef AFS_RXGK_ENV
+static struct ubik_client *cstruct_rxgk;
+#endif
 
 struct release {
     afs_uint32 crtime;
@@ -392,6 +401,9 @@ PrintError(char *msg, afs_int32 errcode)
 	    initialize_KTC_error_table();
 	    initialize_ACFG_error_table();
 	    initialize_VL_error_table();
+#ifdef AFS_RXGK_ENV
+	    initialize_RXGK_error_table();
+#endif
 
 	    fprintf(STDERR, "%s: %s\n", afs_error_table_name(errcode),
 		    afs_error_message(errcode));
@@ -495,20 +507,112 @@ static struct rx_securityClass *uvclass = 0;
 static int uvindex = -1;
 /* called by VLDBClient_Init to set the security module to be used in the RPC */
 int
-UV_SetSecurity(struct rx_securityClass *as, afs_int32 aindex)
+UV_SetSecurity(struct rx_securityClass *as, afs_int32 aindex,
+	       struct afsconf_dir *confDir, struct afsconf_cell *cell)
 {
     uvindex = aindex;
     uvclass = as;
+
+#ifdef AFS_RXGK_ENV
+    if (uvindex == RX_SECIDX_GK && !uv_rxgk_novldb) {
+	return ugen_ClientInitSecObj(confDir, cell, RXGK_SERVICE_ID,
+				     uvclass, uvindex, &cstruct_rxgk);
+    }
+#endif
     return 0;
 }
+
+#ifdef AFS_RXGK_ENV
+static int
+get_rxgk_combined_sc(afs_uint32 aserver, struct rx_securityClass **a_sc)
+{
+    static struct rx_securityClass *last_sc;
+    static afs_uint32 last_server;
+
+    int code;
+    ListAddrByAttributes attr;
+    afsUUID uuid;
+    afs_int32 uniq;
+    afs_int32 nentries;
+    bulkaddrs addrs;
+    struct uuid_fmtbuf uuid_buf;
+
+    memset(&attr, 0, sizeof(attr));
+    memset(&addrs, 0, sizeof(addrs));
+    memset(&uuid, 0, sizeof(uuid));
+    memset(&uuid_buf, 0, sizeof(uuid_buf));
+
+    if (aserver == last_server) {
+	*a_sc = last_sc;
+	return 0;
+    }
+
+    attr.Mask = VLADDR_IPADDR;
+    attr.ipaddr = ntohl(aserver);
+
+    code = ubik_VL_GetAddrsU(cstruct, UBIK_CALL_NEW, &attr, &uuid, &uniq, &nentries, &addrs);
+    xdrfree_bulkaddrs(&addrs);
+    if (code != 0) {
+	PrintError("Unable to get volserver uuid: ", code);
+	return code;
+    }
+
+    VEPRINT1("Getting rxgk creds for volserver uuid %s...",
+	     afsUUID_to_string(&uuid, &uuid_buf));
+
+    code = ubik_rxgk_CombineSingleClientSecObj(cstruct_rxgk, NULL, &uuid, a_sc);
+    if (code != 0) {
+	return code;
+    }
+
+    if (*a_sc == NULL) {
+	fprintf(STDERR, "Error: vlserver claims volserver uuid %s does not "
+			"support rxgk.\n",
+			afsUUID_to_string(&uuid, &uuid_buf));
+	return AFSCONF_NO_SECURITY_CLASS;
+    }
+
+    VEDONE;
+
+    /*
+     * Remember the last sc we generated and reuse it for the same server, to
+     * slightly avoid hammering the VLDB to create effectively the same sc when
+     * contacting the same server repeatedly. This is a very naive cache just
+     * to avoid the worst case for now, since it's so easy to do. This can be
+     * replaced by a more complex solution in the future if that ever seems
+     * warranted.
+     */
+    last_server = aserver;
+    if (last_sc != NULL) {
+	rxs_Release(last_sc);
+    }
+    last_sc = *a_sc;
+
+    return 0;
+}
+#endif /* AFS_RXGK_ENV */
 
 /* bind to volser on <aserver> */
 /* takes server address in network order. */
 int
 UV_BindVolser(afs_uint32 aserver, struct rx_connection **a_conn)
 {
+    struct rx_securityClass *sc;
+
+    sc = uvclass;
+
+#ifdef AFS_RXGK_ENV
+    if (uvindex == RX_SECIDX_GK && !uv_rxgk_novldb) {
+	afs_int32 code;
+	code = get_rxgk_combined_sc(aserver, &sc);
+	if (code != 0) {
+	    return code;
+	}
+    }
+#endif
+
     *a_conn = rx_NewConnection(aserver, htons(AFSCONF_VOLUMEPORT),
-			       VOLSERVICE_ID, uvclass, uvindex);
+			       VOLSERVICE_ID, sc, uvindex);
     return 0;
 }
 
