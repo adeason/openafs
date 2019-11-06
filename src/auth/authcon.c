@@ -516,9 +516,158 @@ afsconf_BuildServerSecurityObjects(void *rock,
 }
 
 #ifdef AFS_RXGK_ENV
+struct fallback_getkey_info {
+    struct afsconf_dir *dir;
+    rxgk_getkey_func eph_getkey;
+    void *eph_getkey_rock;
+};
+static int
+fallback_getkey(void *rock, afs_int32 *kvno, afs_int32 *enctype,
+		rxgk_key *a_key)
+{
+    int code;
+    struct fallback_getkey_info *fgk = rock;
+    code = (*fgk->eph_getkey)(fgk->eph_getkey_rock, kvno, enctype, a_key);
+    if (code == 0) {
+	return 0;
+    }
+    return afsconf_GetRXGKKey(fgk->dir, kvno, enctype, a_key);
+}
+
+/* Generate a random kvno. */
+static afs_int32
+random_kvno(struct afsconf_bsso_info *bsso, afs_int32 *a_kvno)
+{
+    afs_uint32 kvno_u;
+    int code;
+    RXGK_Data data;
+
+    memset(&data, 0, sizeof(data));
+
+    code = rxgk_nonce(&data, sizeof(kvno_u));
+    if (code != 0) {
+	return code;
+    }
+
+    opr_Assert(data.len >= sizeof(kvno_u));
+    memcpy(&kvno_u, data.val, sizeof(kvno_u));
+
+    rx_opaque_freeContents(&data);
+
+    *a_kvno = kvno_u & 0x7fffffff;
+    return 0;
+}
+
+/*
+ * Return 1 if we have a cellwide rxgk key for the given kvno, 0 otherwise. If
+ * we encounter an error, return 0 but also log a warning.
+ */
+static int
+rxgk_kvno_exists(struct afsconf_bsso_info *bsso, afs_int32 kvno)
+{
+    int code;
+    afs_int32 enctype = 0;
+    rxgk_key key;
+
+    code = afsconf_GetRXGKKey(bsso->dir, &kvno, &enctype, &key);
+    if (code != 0) {
+	if (code != AFSCONF_NOTFOUND && bsso->logger != NULL) {
+	    (*bsso->logger)("Warning: Encountered error %d while checking local "
+			    "rxgk keys; is something wrong with our "
+			    "KeyFileExt?\n", code);
+	}
+	return 0;
+    }
+    rxgk_release_key(&key);
+    return 1;
+}
+
+/* Pick a random kvno to use for our ephemeral key. */
+static int
+pick_eph_kvno(struct afsconf_bsso_info *bsso, afs_int32 *a_kvno)
+{
+    int code;
+    int safety;
+    afs_int32 kvno;
+
+    for (safety = 0; ; safety++) {
+	opr_Assert(safety < 1000);
+
+	code = random_kvno(bsso, &kvno);
+	if (code != 0) {
+	    return code;
+	}
+
+	if (kvno < 1024) {
+	    /*
+	     * Don't use a kvno if it's less than 1k, just to try to stay away
+	     * from typical low-numbered kvnos.
+	     */
+	    continue;
+	}
+	if (rxgk_kvno_exists(bsso, kvno)) {
+	    /* Don't use a kvno if we have a cellwide key with the same kvno. */
+	    continue;
+	}
+	break;
+    }
+
+    if (bsso->logger != NULL) {
+	(*bsso->logger)("rxgk: Using ephemeral kvno %d\n", kvno);
+    }
+    *a_kvno = kvno;
+
+    return 0;
+}
+
+
+/**
+ * Create a 'getkey' function for ephemerally-keyed services (e.g. bosserver).
+ *
+ * This creates an rxgk 'getkey'-style function that uses
+ * rxgk_make_ephemeral_getkey(), but falls back to using afsconf_GetRXGKKey()
+ * if the requested key cannot be found. This lets us use ephemeral keys for
+ * normal user access, but still allows someone to use the cell-wide rxgk key,
+ * so -localauth can still work without any krb5 creds.
+ */
+static int
+make_eph_getkey(struct afsconf_bsso_info *bsso, rxgk_getkey_func *a_getkey,
+		void **a_getkey_rock)
+{
+    struct fallback_getkey_info *fgk;
+    int code;
+    afs_int32 eph_kvno;
+
+    fgk = calloc(1, sizeof(*fgk));
+    if (fgk == NULL) {
+	code = RXGK_INCONSISTENCY;
+	goto error;
+    }
+
+    fgk->dir = bsso->dir;
+
+    code = pick_eph_kvno(bsso, &eph_kvno);
+    if (code != 0) {
+	goto error;
+    }
+
+    code = rxgk_make_ephemeral_getkey(eph_kvno, &fgk->eph_getkey, &fgk->eph_getkey_rock);
+    if (code != 0) {
+	goto error;
+    }
+
+    *a_getkey = fallback_getkey;
+    *a_getkey_rock = fgk;
+    return 0;
+
+ error:
+    free(fgk);
+    return code;
+}
+
 static void
 setup_rxgk(struct afsconf_bsso_info *info, struct rx_securityClass **classes,
-	   afs_int32 numClasses)
+	   afs_int32 numClasses, rxgk_getkey_func getkey, void *getkey_rock)
 {
     struct afsconf_dir *dir = info->dir;
     char *acceptor = NULL;
@@ -529,7 +678,8 @@ setup_rxgk(struct afsconf_bsso_info *info, struct rx_securityClass **classes,
     struct rxgk_service_info svc_info;
     int code;
 
-    if (info->type != AFSCONF_BSSO_VLSERVER) {
+    if (info->type != AFSCONF_BSSO_VLSERVER &&
+	info->type != AFSCONF_BSSO_BOSSERVER) {
 	goto done;
     }
 
@@ -567,23 +717,45 @@ setup_rxgk(struct afsconf_bsso_info *info, struct rx_securityClass **classes,
 	goto error;
     }
 
-    code = afsconf_GetLocalCell(dir, cellname, sizeof(cellname));
-    if (code != 0) {
-	ViceLog(0, ("rxgk: afsconf_GetLocalCell failed with %d\n", code));
-	goto error;
-    }
+    if (info->type == AFSCONF_BSSO_VLSERVER) {
+	code = afsconf_GetLocalCell(dir, cellname, sizeof(cellname));
+	if (code != 0) {
+	    ViceLog(0, ("rxgk: afsconf_GetLocalCell failed with %d\n", code));
+	    goto error;
+	}
 
-    code = asprintf(&acceptor, "afs-rxgk@_afs.%s", cellname);
-    if (code < 0) {
-	acceptor = NULL;
-	goto error;
+	code = asprintf(&acceptor, "afs-rxgk@_afs.%s", cellname);
+	if (code < 0) {
+	    acceptor = NULL;
+	    code = ENOMEM;
+	    goto error;
+	}
+
+    } else if (info->type == AFSCONF_BSSO_BOSSERVER) {
+	char namebuf[AFSDIR_PATH_MAX];
+	memset(namebuf, 0, sizeof(namebuf));
+
+	code = gethostname(namebuf, sizeof(namebuf) - 1);
+	if (code != 0) {
+	    ViceLog(0, ("rxgk: Could not get hostname for GSS identity "
+		       "(errno %d)\n", errno));
+	    code = RXGK_INCONSISTENCY;
+	    goto error;
+	}
+
+	code = asprintf(&acceptor, "afs3-bos@%s", namebuf);
+	if (code < 0) {
+	    acceptor = NULL;
+	    code = ENOMEM;
+	    goto error;
+	}
     }
 
     memset(&svc_info, 0, sizeof(svc_info));
     svc_info.acceptor = acceptor;
     svc_info.keytab = keytab;
-    svc_info.getkey = afsconf_GetRXGKKey;
-    svc_info.getkey_rock = dir;
+    svc_info.getkey = getkey;
+    svc_info.getkey_rock = getkey_rock;
     svc_info.getfskey = info->getfskey;
     svc_info.getfskey_rock = info->getfskey_rock;
 
@@ -623,6 +795,11 @@ afsconf_BuildServerSecurityObjects_int(struct afsconf_bsso_info *info,
     struct afsconf_dir *dir = info->dir;
     int code;
 
+#ifdef AFS_RXGK_ENV
+    rxgk_getkey_func getkey = afsconf_GetRXGKKey;
+    void *getkey_rock = dir;
+#endif
+
     if (dir == NULL || classes == NULL || numClasses == NULL) {
 	code = AFSCONF_FAILURE;
 	goto done;
@@ -631,6 +808,7 @@ afsconf_BuildServerSecurityObjects_int(struct afsconf_bsso_info *info,
     switch (info->type) {
     case AFSCONF_BSSO_DEFAULT:
     case AFSCONF_BSSO_VLSERVER:
+    case AFSCONF_BSSO_BOSSERVER:
 	/* noop */
 	break;
     default:
@@ -663,10 +841,17 @@ afsconf_BuildServerSecurityObjects_int(struct afsconf_bsso_info *info,
 	    rxkad_NewKrb5ServerSecurityObject(rxkad_crypt, dir, afsconf_GetKey,
 					      _afsconf_GetRxkadKrb5Key, NULL);
 #ifdef AFS_RXGK_ENV
+    if (info->type == AFSCONF_BSSO_BOSSERVER) {
+	code = make_eph_getkey(info, &getkey, &getkey_rock);
+	if (code != 0) {
+	    goto done;
+	}
+    }
+
     (*classes)[RX_SECIDX_GK] =
-	rxgk_NewServerSecurityObject(info->server_uuid, dir,
-				     afsconf_GetRXGKKey);
-    setup_rxgk(info, *classes, *numClasses);
+	rxgk_NewServerSecurityObject(info->server_uuid, getkey_rock, getkey);
+    setup_rxgk(info, *classes, *numClasses, getkey, getkey_rock);
+
 #endif
 
     code = 0;

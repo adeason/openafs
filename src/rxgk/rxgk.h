@@ -64,6 +64,9 @@ struct rx_securityClass * rxgk_NewServerSecurityObject(afsUUID *server_uuid,
 						       void *getkey_rock,
 						       rxgk_getkey_func getkey)
 						       AFS_NONNULL((3));
+afs_int32 rxgk_make_ephemeral_getkey(afs_int32 kvno,
+				     rxgk_getkey_func *a_getkey,
+				     void **a_getkey_rock) AFS_NONNULL();
 
 afs_int32 rxgk_ServerGetPeerUUID(struct rx_connection *conn, afsUUID *uuid)
 				 AFS_NONNULL();
