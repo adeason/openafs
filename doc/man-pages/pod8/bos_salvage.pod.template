@@ -15,7 +15,8 @@ B<bos salvage> S<<< B<-server> <I<machine name>> >>>
     S<<< [B<-tmpdir> <I<directory to place tmp files>>] >>>
     S<<< [B<-orphans> (ignore | remove | attach)] >>> S<<< [B<-cell> <I<cell name>>] >>>
     S<<< [B<-forceDAFS>] >>>
-    [B<-noauth>] [B<-localauth>] [B<-help>]
+    [B<-noauth>] [B<-localauth>] S<<< [B<-rxgk> (crypt | auth | clear)] >>>
+    [B<-rxgk-cellwide>] [B<-help>]
 
 B<bos sa> S<<< B<-se> <I<machine name>> >>> S<<< [B<-part> <I<salvage partition>>] >>>
     S<<< [B<-v> <I<salvage volume number or volume name>>] >>>
@@ -24,7 +25,7 @@ B<bos sa> S<<< B<-se> <I<machine name>> >>> S<<< [B<-part> <I<salvage partition>
     S<<< [B<-t> <I<directory to place tmp files>>] >>>
     S<<< [B<-o> (ignore | remove | attach)] >>> S<<< [B<-c> <I<cell name>>] >>> [B<-n>]
     S<<< [B<-force>] >>>
-    [B<-l>] [B<-h>]
+    [B<-l>] S<<< [B<-rxgk> (crypt | auth | clear)] >>> [B<-rxgk-c>] [B<-h>]
 
 =for html
 </div>

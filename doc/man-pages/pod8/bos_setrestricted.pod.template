@@ -8,7 +8,8 @@ bos_setrestricted - place a server in restricted mode
 <div class="synopsis">
 
 B<bos setrestricted> S<<< B<-server> <I<machine name>> >>> S<<< B<-mode> (0 | 1) >>>
-    S<<< [B<-cell> <I<cell name>>] >>> [B<-noauth>] [B<-localauth>] [B<-help>]
+    S<<< [B<-cell> <I<cell name>>] >>> [B<-noauth>] [B<-localauth>]
+    S<<< [B<-rxgk> (crypt | auth | clear)] >>> [B<-rxgk-cellwide>] [B<-help>]
 
 =for html
 </div>

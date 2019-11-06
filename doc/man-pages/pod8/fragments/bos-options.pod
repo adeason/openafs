@@ -11,12 +11,19 @@ L<bos(8)>.
 
 =item B<-localauth>
 
-Constructs a server ticket using a key from the local
-F<{{ afsconfdir }}/KeyFile> or F<{{ afsconfdir }}/KeyFileExt> file.
-The B<bos> command interpreter presents the
-ticket to the BOS Server during mutual authentication. Do not combine this
-flag with the B<-cell> or B<-noauth> options. For more details, see
+Use server credentials from local disk to contact the BOS Server. Do not
+combine this flag with the B<-cell> or B<-noauth> options. For more details,
+see L<bos(8)>.
+
+=item B<-rxgk> (crypt | auth | clear)
+
+Use rxgk credentials when contacting the BOS Server. For more details, see
 L<bos(8)>.
+
+=item B<-rxgk-cellwide>
+
+When using rxgk, use tokens encrypted with the rxgk cell-wide key. For more
+details, see L<bos(8)>.
 
 =item B<-help>
 

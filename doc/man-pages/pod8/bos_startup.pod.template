@@ -8,10 +8,12 @@ bos_startup - Starts a process without changing its status flag
 <div class="synopsis">
 
 B<bos startup> S<<< B<-server> <I<machine name>> >>> S<<< [B<-instance> <I<instances>>+] >>>
-    S<<< [B<-cell> <I<cell name>>] >>> [B<-noauth>] [B<-localauth>] [B<-help>]
+    S<<< [B<-cell> <I<cell name>>] >>> [B<-noauth>] [B<-localauth>]
+    S<<< [B<-rxgk> (crypt | auth | clear)] >>> [B<-rxgk-cellwide>] [B<-help>]
 
 B<bos startu> S<<< B<-s> <I<machine name>> >>> S<<< [B<-i> <I<instances>>+] >>>
-    S<<< [B<-c> <I<cell name>>] >>> [B<-n>] [B<-l>] [B<-h>]
+    S<<< [B<-c> <I<cell name>>] >>> [B<-n>] [B<-l>]
+    S<<< [B<-rxgk> (crypt | auth | clear)] >>> [B<-rxgk-c>] [B<-h>]
 
 =for html
 </div>

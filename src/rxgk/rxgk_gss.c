@@ -514,16 +514,18 @@ struct rxgk_gss_isc_state {
  * @param[in,out] gss_ctx   The GSS security context.
  * @param[in] target_name   The name of the GSS target (e.g. the krb5
  *			    service princ afs-rxgk/_afs.cell@REALM)
+ * @param[in] localauth	    1 if we are using localauth, 0 otherwise.
  * @return rx error codes, errno codes.
  */
 static afs_int32
 negoclient_isc(struct rxgk_gss_isc_state *isc, gss_ctx_id_t *gss_ctx,
-	       gss_name_t target_name)
+	       gss_name_t target_name, int localauth)
 {
     afs_uint32 flags_in;
     afs_uint32 flags_out = 0;
     afs_uint32 major, minor = 0;
     afs_int32 code;
+    gss_cred_id_t isc_cred = GSS_C_NO_CREDENTIAL;
 
     gss_buffer_desc gss_recv_token;
 
@@ -550,7 +552,25 @@ negoclient_isc(struct rxgk_gss_isc_state *isc, gss_ctx_id_t *gss_ctx,
 	goto done;
     }
 
-    major = gss_init_sec_context(&minor, GSS_C_NO_CREDENTIAL, gss_ctx,
+    if (localauth) {
+	/*
+	 * For localauth, acquire creds for the same identity as the target
+	 * acceptor. e.g., if we're authenticating to afs3-bos/foo, acquire
+	 * creds for afs3-bos/foo.
+	 */
+	major = gss_acquire_cred(&minor, target_name, GSS_C_INDEFINITE,
+				 (gss_OID_set)gss_mech_set_krb5,
+				 GSS_C_INITIATE,
+				 &isc_cred,
+				 NULL /* actual_mechs */,
+				 NULL /* time_rec */);
+	code = gss2rxgk_error("gss_acquire_cred", major, minor);
+	if (code != 0) {
+	    goto done;
+	}
+    }
+
+    major = gss_init_sec_context(&minor, isc_cred, gss_ctx,
 				 target_name, GSS_C_NO_OID, flags_in,
 				 0 /* time */, GSS_C_NO_CHANNEL_BINDINGS,
 				 &gss_recv_token,
@@ -593,6 +613,7 @@ negoclient_isc(struct rxgk_gss_isc_state *isc, gss_ctx_id_t *gss_ctx,
  done:
     xdrfree_RXGK_Data(&isc->rxgk_recv_token);
     memset(&isc->rxgk_recv_token, 0, sizeof(isc->rxgk_recv_token));
+    (void)gss_release_cred(&minor, &isc_cred);
 
     return code;
 }
@@ -666,34 +687,42 @@ negoclient_send_token(struct rxgk_gss_isc_state *isc,
     return code;
 }
 
-/**
- * Use an rxnull connection to perform GSS negotiation to obtain an rxgk token.
- *
- * Obtain a token over the RXGK negotiation service, for the GSS hostbased
- * principal of service sname on the host given in hostname at the IPv4
- * address in addr (host byte order) and the indicated port (also HBO),
- * for RXGK_Level level.
- *
- * Returns information about the token in the supplied TokenInfo object, and
- * the master key of the token in return_k0, and the token itself in
- * return_token.
- *
- * @param[in] conn	The rx connection upon which GSS negotiation will be
- *			performed. Must be an rxnull connection.
- * @param[in] target	The host-based service name that is the target
- *			principal of the GSS negotiation (e.g.
- *			"afs-rxgk@_afs.cell").
- * @param[in] level	The security level for which the obtained token will
- *			be valid.
- * @param[out] return_info	Information describing the obtained token.
- * @param[out] return_k0	The master key of the returned token.
- * @param[out] return_token	The returned token.
- * @return rx error codes, errno codes.
- */
-afs_int32
-rxgk_NegotiateClientToken(struct rx_connection *conn, char *target,
-			  RXGK_Level level, RXGK_TokenInfo *return_info,
-			  RXGK_Data *return_k0, RXGK_Data *return_token)
+static afs_int32
+setenv_check(const char *name, const char *value, int overwrite)
+{
+    int code = setenv(name, value, overwrite);
+    if (code != 0) {
+	ViceLog(0, ("rxgk: setenv(%s, %s, %d) failed with code %d.\n",
+		    name, value, overwrite, errno));
+	return RXGK_INCONSISTENCY;
+    }
+    return 0;
+}
+
+static afs_int32
+set_client_localauth_creds(const char *localauth_keytab)
+{
+    afs_int32 code;
+
+    code = setenv_check("KRB5_CLIENT_KTNAME", localauth_keytab, 1);
+    if (code != 0) {
+	return code;
+    }
+
+    /*
+     * Use an in-memory krb5 ccache, so we don't leave acceptor creds lying
+     * around in the users's ccache. Ideally we'd reset the ccache back to what
+     * it was afterwards, but effectively no callers need that, so don't
+     * bother.
+     */
+    return setenv_check("KRB5CCNAME", "MEMORY:rxgk", 1);
+}
+
+static afs_int32
+negotiate_client_token(struct rx_connection *conn, char *target,
+		       RXGK_Level level, const char *localauth_keytab,
+		       RXGK_TokenInfo *return_info, RXGK_Data *return_k0,
+		       RXGK_Data *return_token)
 {
     gss_buffer_desc k0;
     gss_ctx_id_t gss_ctx = GSS_C_NO_CONTEXT;
@@ -705,6 +734,7 @@ rxgk_NegotiateClientToken(struct rx_connection *conn, char *target,
     RXGK_Data clientinfo_enc;
 
     struct rxgk_gss_isc_state isc;
+    int localauth = 0;
     afs_int32 code;
 
     memset(&k0, 0, sizeof(k0));
@@ -734,10 +764,18 @@ rxgk_NegotiateClientToken(struct rx_connection *conn, char *target,
     if (code != 0)
 	goto done;
 
+    if (localauth_keytab != NULL) {
+	localauth = 1;
+	code = set_client_localauth_creds(localauth_keytab);
+	if (code != 0) {
+	    goto done;
+	}
+    }
+
     /* Keep going as long as our local gss_init_sec_context says we need to
      * keep calling it. */
     do {
-	code = negoclient_isc(&isc, &gss_ctx, target_name);
+	code = negoclient_isc(&isc, &gss_ctx, target_name, localauth);
 	if (code != 0) {
 	    goto done;
 	}
@@ -815,6 +853,93 @@ rxgk_NegotiateClientToken(struct rx_connection *conn, char *target,
     return code;
 }
 
+/**
+ * Use an rxnull connection to perform GSS negotiation to obtain an rxgk token.
+ *
+ * Obtain a token over the RXGK negotiation service, for the GSS hostbased
+ * principal of service sname on the host given in hostname at the IPv4
+ * address in addr (host byte order) and the indicated port (also HBO),
+ * for RXGK_Level level.
+ *
+ * Returns information about the token in the supplied TokenInfo object, and
+ * the master key of the token in return_k0, and the token itself in
+ * return_token.
+ *
+ * @param[in] conn	The rx connection upon which GSS negotiation will be
+ *			performed. Must be an rxnull connection.
+ * @param[in] target	The host-based service name that is the target
+ *			principal of the GSS negotiation (e.g.
+ *			"afs-rxgk@_afs.cell").
+ * @param[in] level	The security level for which the obtained token will
+ *			be valid.
+ * @param[out] return_info	Information describing the obtained token.
+ * @param[out] return_k0	The master key of the returned token.
+ * @param[out] return_token	The returned token.
+ * @return rx error codes, errno codes.
+ */
+afs_int32
+rxgk_NegotiateClientToken(struct rx_connection *conn, char *target,
+			  RXGK_Level level, RXGK_TokenInfo *return_info,
+			  RXGK_Data *return_k0, RXGK_Data *return_token)
+{
+    return negotiate_client_token(conn, target, level, NULL, return_info,
+				  return_k0, return_token);
+}
+
+/**
+ * Use an rxnull connection to perform GSS negotiation to obtain an rxgk
+ * security object.
+ *
+ * A variant of rxgk_NegotiateClientToken() that performs the additional step
+ * of converting the obtained token into an rx security object. It also can be
+ * optionally used for localauth. See rxgk_NegotiateClientToken() for more
+ * details.
+ *
+ * @param[in] conn	See rxgk_NegotiateClientToken().
+ * @param[in] target	See rxgk_NegotiateClientToken().
+ * @param[in] level	See rxgk_NegotiateClientToken().
+ * @param[in] localauth_keytab	If NULL, we use the default gss creds (e.g.,
+ *				the default krb5 ccache) to authenticate as
+ *				whatever identity we find. If non-NULL, we use
+ *				the given keytab to authenticate as "target".
+ * @param[out] a_sc	An rxgk security object to be given to rx.
+ * @return See rxgk_NegotiateClientToken().
+ */
+afs_int32
+rxgk_NegotiateClientSecObj(struct rx_connection *conn, char *target,
+			   RXGK_Level level, const char *localauth_keytab,
+			   struct rx_securityClass **a_sc)
+{
+    afs_int32 code;
+    RXGK_TokenInfo tokinfo;
+    RXGK_Data k0_data;
+    RXGK_Data tokblob;
+    rxgk_key k0 = NULL;
+
+    memset(&tokinfo, 0, sizeof(tokinfo));
+    memset(&k0_data, 0, sizeof(k0_data));
+    memset(&tokblob, 0, sizeof(tokblob));
+
+    code = negotiate_client_token(conn, target, level, localauth_keytab,
+				  &tokinfo, &k0_data, &tokblob);
+    if (code != 0) {
+	goto done;
+    }
+
+    code = rxgk_make_key(&k0, k0_data.val, k0_data.len, tokinfo.enctype);
+    if (code != 0) {
+	goto done;
+    }
+
+    *a_sc = rxgk_NewClientSecurityObject(level, tokinfo.enctype, k0, &tokblob);
+
+ done:
+    xdrfree_RXGK_Data(&k0_data);
+    xdrfree_RXGK_Data(&tokblob);
+    rxgk_release_key(&k0);
+    return code;
+}
+
 /*
  * Server-side routines.
  */
@@ -857,13 +982,7 @@ set_gss_keytab(char *keytab)
 static afs_int32
 set_gss_keytab(char *keytab)
 {
-    afs_int32 code = setenv("KRB5_KTNAME", keytab, 0);
-    if (code != 0) {
-	ViceLog(0, ("rxgk: setenv(KRB5_KTNAME, %s) failed with code %d.\n",
-		    keytab, errno));
-	return RXGK_INCONSISTENCY;
-    }
-    return 0;
+    return setenv_check("KRB5_KTNAME", keytab, 0);
 }
 #endif /* !HAVE_KRB5_GSS_REGISTER_ACCEPTOR_IDENTITY */
 

@@ -9,10 +9,12 @@ bos_setrestart - Sets when the BOS Server restarts processes
 
 B<bos setrestart> S<<< B<-server> <I<machine name>> >>>
     S<<< B<-time> <I<time to restart server>> >>> [B<-general>] [B<-newbinary>]
-    S<<< [B<-cell> <I<cell name>>] >>> [B<-noauth>] [B<-localauth>] [B<-help>]
+    S<<< [B<-cell> <I<cell name>>] >>> [B<-noauth>] [B<-localauth>]
+    S<<< [B<-rxgk> (crypt | auth | clear)] >>> [B<-rxgk-cellwide>] [B<-help>]
 
 B<bos setr> S<<< B<-s> <I<machine name>> >>> S<<< B<-t> <I<time to restart server>> >>>
-    [B<-g>] [B<-ne>] S<<< [B<-c> <I<cell name>>] >>> [B<-no>] [B<-l>] [B<-h>]
+    [B<-g>] [B<-ne>] S<<< [B<-c> <I<cell name>>] >>> [B<-no>] [B<-l>]
+    S<<< [B<-rxgk> (crypt | auth | clear)] >>> [B<-rxgk-c>] [B<-h>]
 
 =for html
 </div>

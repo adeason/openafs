@@ -9,10 +9,12 @@ bos_removekey - Removes a server encryption key from the KeyFile file
 
 B<bos removekey> S<<< B<-server> <I<machine name>> >>>
     S<<< B<-kvno> <I<key version number>>+ >>> S<<< [B<-cell> <I<cell name>>] >>>
-    [B<-noauth>] [B<-localauth>] [B<-help>]
+    [B<-noauth>] [B<-localauth>] S<<< [B<-rxgk> (crypt | auth | clear)] >>>
+    [B<-rxgk-cellwide>] [B<-help>]
 
 B<bos removek> S<<< B<-s> <I<machine name>> >>> S<<< B<-k> <I<key version number>>+ >>>
-    S<<< [B<-c> <I<cell name>>] >>> [B<-n>] [B<-l>] [B<-h>]
+    S<<< [B<-c> <I<cell name>>] >>> [B<-n>] [B<-l>]
+    S<<< [B<-rxgk> (crypt | auth | clear)] >>> [B<-rxgk-cellwide>] [B<-h>]
 
 =for html
 </div>

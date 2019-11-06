@@ -8,7 +8,8 @@ bos_getrestricted - Displays whether a bos server is restricted or not
 <div class="synopsis">
 
 B<bos getrestricted> S<<< B<-server> <I<machine name>> >>> S<<< [B<-cell> <I<cell name>>] >>>
-    [B<-noauth>] [B<-localauth>] [B<-help>]
+    [B<-noauth>] [B<-localauth>] S<<< [B<-rxgk> (crypt | auth | clear)] >>>
+    [B<-rxgk-cellwide>] [B<-help>]
 
 =for html
 </div>

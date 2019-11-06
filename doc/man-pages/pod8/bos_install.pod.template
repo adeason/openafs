@@ -9,11 +9,12 @@ bos_install - Installs a new version of a binary file
 
 B<bos install> S<<< B<-server> <I<machine name>> >>> S<<< B<-file> <I<files to install>>+ >>>
     S<<< [B<-dir> <I<destination dir>>] >>> S<<< [B<-cell> <I<cell name>>] >>>
-    [B<-noauth>] [B<-localauth>] [B<-help>]
+    [B<-noauth>] [B<-localauth>] S<<< [B<-rxgk> (crypt | auth | clear)] >>>
+    [B<-rxgk-cellwide>] [B<-help>]
 
 B<bos i> S<<< B<-s> <I<machine name>> >>> S<<< B<-f> <I<files to install>>+ >>>
     S<<< [B<-d> <I<destination dir>>] >>> S<<< [B<-c> <I<cell name>>] >>> [B<-n>]
-    [B<-l>] [B<-h>]
+    [B<-l>] S<<< [B<-rxgk> (crypt | auth | clear)] >>> [B<-rxgk-c>] [B<-h>]
 
 =for html
 </div>

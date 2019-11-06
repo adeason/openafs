@@ -9,10 +9,12 @@ bos_delete - Deletes a server process from the BosConfig file
 
 B<bos delete> S<<< B<-server> <I<machine name>> >>>
     S<<< B<-instance> <I<server process name>>+ >>> S<<< [B<-cell> <I<cell name>>] >>>
-    [B<-noauth>] [B<-localauth>] [B<-help>]
+    [B<-noauth>] [B<-localauth>]
+    S<<< [B<-rxgk> (crypt | auth | clear)] >>> [B<-rxgk-cellwide>] [B<-help>]
 
 B<bos d> S<<< B<-s> <I<machine name>> >>> S<<< B<-i> <I<server process name>>+ >>>
-    S<<< [B<-c> <I<cell name>>] >>> [B<-n>] [B<-l>] [B<-h>]
+    S<<< [B<-c> <I<cell name>>] >>> [B<-n>] [B<-l>]
+    S<<< [B<-rxgk> (crypt | auth | clear)] >>> [B<-rxgk-cellwide>] [B<-h>]
 
 =for html
 </div>

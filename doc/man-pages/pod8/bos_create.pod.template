@@ -10,12 +10,13 @@ bos_create - Defines a new process in the BosConfig file and starts it
 B<bos create> S<<< B<-server> <I<machine name>> >>>
     S<<< B<-instance> <I<server process name>> >>> S<<< B<-type> <I<server type>> >>>
     S<<< B<-cmd> <I<command lines>>+ >>> S<<< [B<-notifier> <I<notifier program>>] >>>
-    S<<< [B<-cell> <I<cell name>>] >>> [B<-noauth>] [B<-localauth>] [B<-help>]
+    S<<< [B<-cell> <I<cell name>>] >>> [B<-noauth>] [B<-localauth>]
+    S<<< [B<-rxgk> (crypt | auth | clear)] >>> [B<-rxgk-cellwide>] [B<-help>]
 
 B<bos c> S<<< B<-s> <I<machine name>> >>> S<<< B<-i> <I<server process name>> >>>
     S<<< B<-t> <I<server type>> >>> S<<< B<-cm> <I<command lines>>+ >>>
     S<<< [B<-not> <I<notifier program>>] >>> S<<< [B<-ce> <I<cell name>>] >>> [B<-noa>]
-    [B<-l>] [B<-h>]
+    [B<-l>] S<<< [B<-rxgk> (crypt | auth | clear)] >>> [B<-rxgk-c>] [B<-h>]
 
 =for html
 </div>

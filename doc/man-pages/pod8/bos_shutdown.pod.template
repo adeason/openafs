@@ -9,10 +9,12 @@ bos_shutdown - Stops a process without changing its status flag
 
 B<bos shutdown> S<<< B<-server> <I<machine name>> >>>
     S<<< [B<-instance> <I<instances>>+] >>> [B<-wait>] S<<< [B<-cell> <I<cell name>>] >>>
-    [B<-noauth>] [B<-localauth>] [B<-help>]
+    [B<-noauth>] [B<-localauth>] S<<< [B<-rxgk> (crypt | auth | clear)] >>>
+    [B<-rxgk-cellwide>] [B<-help>]
 
 B<bos sh> S<<< B<-s> <I<machine name>> >>> S<<< [B<-i> <I<instances>>+] >>> [B<-w>]
-    S<<< [B<-c> <I<cell name>>] >>> [B<-n>] [B<-l>] [B<-h>]
+    S<<< [B<-c> <I<cell name>>] >>> [B<-n>] [B<-l>]
+    S<<< [B<-rxgk> (crypt | auth | clear)] >>> [B<-rxgk-c>] [B<-h>]
 
 =for html
 </div>

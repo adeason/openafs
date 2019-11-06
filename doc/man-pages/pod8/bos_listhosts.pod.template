@@ -8,16 +8,18 @@ bos_listhosts - Displays the contents of the CellServDB file
 <div class="synopsis">
 
 B<bos listhosts> S<<< B<-server> <I<machine name>> >>> S<<< [B<-cell> <I<cell name>>] >>>
-    [B<-noauth>] [B<-localauth>] [B<-help>]
+    [B<-noauth>] [B<-localauth>] S<<< [B<-rxgk> (crypt | auth | clear)] >>>
+    [B<-rxgk-cellwide>] [B<-help>]
 
 B<bos listh> S<<< B<-s> <I<machine name>> >>> S<<< [B<-c> <I<cell name>>] >>> [B<-n>]
-    [B<-l>]  [-h]
+    [B<-l>] S<<< [B<-rxgk> (crypt | auth | clear)] >>> [B<-rxgk-c>] [-h]
 
 B<bos getcell> S<<< B<-server> <I<machine name>> >>> S<<< [B<-cell> <I<cell name>>] >>>
-    [B<-noauth>] [B<-localauth>] [B<-help>]
+    [B<-noauth>] [B<-localauth>] S<<< [B<-rxgk> (crypt | auth | clear)] >>>
+    [B<-rxgk-cellwide>] [B<-help>]
 
 B<bos getc> S<<< B<-s> <I<machine name>> >>> S<<< [B<-c> <I<cell name>>] >>> [B<-n>]
-    [B<-l>] [-h]
+    [B<-l>] S<<< [B<-rxgk> (crypt | auth | clear)] >>> [B<-rxgk-c>] [-h]
 
 =for html
 </div>

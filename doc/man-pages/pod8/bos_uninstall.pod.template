@@ -9,11 +9,12 @@ bos_uninstall - Reverts to the former version of a process's binary file
 
 B<bos uninstall> S<<< B<-server> <I<machine name>> >>>
     S<<< B<-file> <I<files to uninstall>>+ >>> S<<< [B<-dir> <I<destination dir>>] >>>
-    S<<< [B<-cell> <I<cell name>>] >>> [B<-noauth>] [B<-localauth>] [B<-help>]
+    S<<< [B<-cell> <I<cell name>>] >>> [B<-noauth>] [B<-localauth>]
+    S<<< [B<-rxgk> (crypt | auth | clear)] >>> [B<-rxgk-cellwide>] [B<-help>]
 
 B<bos u> S<<< B<-s> <I<machine name>> >>> S<<< B<-f> <I<files to uninstall>>+ >>>
     S<<< [B<-d> <I<destination dir>>] >>> S<<< [B<-c> <I<cell name>>] >>> [B<-n>] [B<-l>]
-    [B<-h>]
+    S<<< [B<-rxgk> (crypt | auth | clear)] >>> [B<-rxgk-c>] [B<-h>]
 
 =for html
 </div>

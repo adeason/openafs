@@ -8,10 +8,12 @@ bos_status - Displays the status of server processes
 <div class="synopsis">
 
 S<<< B<bos status -server> <I<machine name>> >>>  [-instance <I<server process name>>+]
-[B<-long>]  S<<< [B<-cell> <I<cell name>>] >>>  [B<-noauth>]  [B<-localauth>]  [B<-help>]
+[B<-long>]  S<<< [B<-cell> <I<cell name>>] >>>  [B<-noauth>]  [B<-localauth>]
+S<<< [B<-rxgk> (crypt | auth | clear)] >>> [B<-rxgk-cellwide>] [B<-help>]
 
 S<<< B<bos stat -s> <I<machine name>> >>>  [-i <I<server process name>>+]
-[B<-lon>]  S<<< [B<-c> <I<cell name>>] >>>  [B<-n>]  [B<-loc>]  [B<-h>]
+[B<-lon>]  S<<< [B<-c> <I<cell name>>] >>>  [B<-n>]  [B<-loc>]
+S<<< [B<-rxgk> (crypt | auth | clear)] >>> [B<-rxgk-c>] [B<-h>]
 
 =for html
 </div>

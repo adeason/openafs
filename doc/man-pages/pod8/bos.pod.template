@@ -168,15 +168,17 @@ prints the help message.
 
 =item B<-localauth>
 
-Constructs a server ticket using the server encryption key with the
-highest key version number in the local F<{{ afsconfdir }}/KeyFile> or
-F<{{ afsconfdir }}/KeyFileExt> file. The
-B<bos> command interpreter presents the ticket, which never expires, to
-the BOS Server during mutual authentication.
+Use server credentials from local disk to contact the BOS Server. When using
+rxkad (the default), we use the highest key version number in the local
+F<{{ afsconfdir }}/KeyFile> or F<{{ afsconfdir }}/KeyFileExt> file. When using
+rxgk (see B<-rxgk>), by default we use the B<afs3-bos/I<server>> entry in
+F<{{ afsconfdir }}/rxgk.keytab>; or, if B<-rxgk-cellwide> is given, we instead
+use the highest key version number in the local F<{{ afsconfdir }}/KeyFileExt>
+file.
 
 Use this flag only when issuing a command on a server machine; client
-machines do not usually have a F<{{ afsconfdir }}/KeyFile> or
-F<{{ afsconfdir }}/KeyFileExt> file.  The issuer
+machines do not usually have the files F<{{ afsconfdir }}/KeyFile>,
+F<{{ afsconfdir }}/KeyFileExt>, or F<{{ afsconfdir }}/rxgk.keytab>. The issuer
 of a command that includes this flag must be logged on to the server
 machine as the local superuser C<root>. The flag is useful for commands
 invoked by an unattended application program, such as a process controlled
@@ -192,6 +194,14 @@ whereas a command on which the B<-cell> argument is included runs in the
 specified foreign cell. Also, do not combine the B<-localauth> and
 B<-noauth> flags.
 
+Note that using B<-localauth -rxgk> without B<-rxgk-cellwide> will not usually
+work when contacting a BOS Server running on a different machine; the localauth
+credentials are specific to each machine running a BOS Server. To use
+B<-localauth -rxgk> when contacting a different server, either specify the
+B<-rxgk-cellwide> flag (if the target server has the rxgk cell-wide key), or
+add a keytab entry for B<afs3-bos/I<server>> for the target server to
+F<{{ afsconfdir }}/rxgk.keytab>.
+
 =item B<-noauth>
 
 Establishes an unauthenticated connection to the BOS Server, in which the
@@ -203,6 +213,31 @@ normal circumstances, the BOS Server allows only privileged users to issue
 commands that change the status of a server or configuration file, and
 refuses to perform such an action even if the B<-noauth> flag is
 provided. Do not combine the B<-noauth> and B<-localauth> flags.
+
+=item B<-rxgk> (crypt | auth | clear)
+
+Specify B<-rxgk> to use rxgk credentials when contacting the BOS Server. The
+C<crypt> argument causes B<bos> to use rxgk with per-packet encryption, C<auth>
+causes B<bos> to use rxgk with per-packet integrity protection, and C<clear>
+causes B<bos> to use rxgk without any per-packet cryptography.
+
+By default, B<bos> uses rxkad credentials. B<bos> falls back to
+unauthenticated connections if credentials are not available.
+
+=item B<-rxgk-cellwide>
+
+By default, when using rxgk, B<bos> contacts the BOS Server to negotiate an
+authenticated connection using the local GSS credentials (or, if B<-localauth>
+is given, the local F<{{ afsconfdir }}/rxgk.keytab> file). The user's tokens
+acquired with B<gklog> and displayed by B<tokens> are not used, since those
+tokens are encrypted with the rxgk cell-wide key, which may not be available on
+the target BOS Server.
+
+To instead use rxgk tokens that are encrypted with the rxgk cell-wide key, use
+the B<-rxgk-cellwide> option. Without B<-localauth>, this will use the current
+user's tokens as displayed by B<tokens>. With B<-localauth>, this will cause
+B<bos> to construct credentials using the rxgk cell-wide key available in the
+local F<{{ afsconfdir }}/KeyFileExt> file.
 
 =item B<-server> <I<machine name>>
 

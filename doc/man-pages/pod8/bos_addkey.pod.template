@@ -9,11 +9,12 @@ bos_addkey - Adds a new server encryption key to the KeyFile file
 
 B<bos addkey> S<<< B<-server> <I<machine name>> >>> S<<< [B<-key> <I<key>>] >>>
     S<<< B<-kvno> <I<key version number>> >>> S<<< [B<-cell> <I<cell name>>] >>>
-    [B<-noauth>] [B<-localauth>] [B<-help>]
+    [B<-noauth>] [B<-localauth>]
+    S<<< [B<-rxgk> (crypt | auth | clear)] >>> [B<-rxgk-cellwide>] [B<-help>]
 
 B<bos addk> S<<< B<-s> <I<machine name>> >>> S<<< [B<-ke> <I<key>>] >>>
     S<<< B<-kv> <I<key version number>> >>> S<<< [B<-ce> <I<cell name>>] >>> [B<-n>]
-    [B<-l>] [B<-h>]
+    [B<-l>] S<<< [B<-rxgk> (crypt | auth | clear)] >>> [B<-rxgk-c>] [B<-h>]
 
 =for html
 </div>

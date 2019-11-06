@@ -9,10 +9,12 @@ bos_stop - Stops a process after changing its status flag
 
 B<bos stop> S<<< B<-server> <I<machine name>> >>>
     S<<< B<-instance> <I<server process name>>+ >>> [B<-wait>]
-    S<<< [B<-cell> <I<cell name>>] >>> [B<-noauth>] [B<-localauth>] [B<-help>]
+    S<<< [B<-cell> <I<cell name>>] >>> [B<-noauth>] [B<-localauth>]
+    S<<< [B<-rxgk> (crypt | auth | clear)] >>> [B<-rxgk-cellwide>] [B<-help>]
 
 B<bos sto> S<<< B<-s> <I<machine name>> >>> S<<< B<-i> <I<server process name>>+ >>>
-    [B<-w>] S<<< [B<-c> <I<cell name>>] >>> [B<-n>] [B<-l>] [B<-h>]
+    [B<-w>] S<<< [B<-c> <I<cell name>>] >>> [B<-n>] [B<-l>]
+    S<<< [B<-rxgk> (crypt | auth | clear)] >>> [B<-rxgk-c>] [B<-h>]
 
 =for html
 </div>

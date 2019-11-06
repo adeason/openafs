@@ -117,6 +117,11 @@ afs_int32 rxgk_NegotiateClientToken(struct rx_connection *conn, char *target,
 				    RXGK_TokenInfo *return_info,
 				    RXGK_Data *return_k0,
 				    RXGK_Data *return_token) AFS_NONNULL();
+afs_int32 rxgk_NegotiateClientSecObj(struct rx_connection *conn, char *target,
+				     RXGK_Level level,
+				     const char *localauth_keytab,
+				     struct rx_securityClass **a_sc)
+				     AFS_NONNULL();
 
 /* Info for our RXGK_ service. */
 struct rxgk_service_info {

@@ -8,10 +8,12 @@ bos_setauth - Sets authorization checking requirements for all server processes
 <div class="synopsis">
 
 B<bos setauth> S<<< B<-server> <I<machine name>> >>> S<<< B<-authrequired> (on | off) >>>
-    S<<< [B<-cell> <I<cell name>>] >>> [B<-noauth>] [B<-localauth>] [B<-help>]
+    S<<< [B<-cell> <I<cell name>>] >>> [B<-noauth>] [B<-localauth>]
+    S<<< [B<-rxgk> (crypt | auth | clear)] >>> [B<-rxgk-cellwide>] [B<-help>]
 
 B<bos seta> S<<< B<-s> <I<machine name>> >>> S<<< B<-a> (on | off) >>>
-    S<<< [B<-c> <I<cell name>>] >>> [B<-n>] [B<-l>] [B<-h>]
+    S<<< [B<-c> <I<cell name>>] >>> [B<-n>] [B<-l>]
+    S<<< [B<-rxgk> (crypt | auth | clear)] >>> [B<-rxgk-c>] [B<-h>]
 
 =for html
 </div>

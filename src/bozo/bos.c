@@ -31,6 +31,10 @@
 #include <afs/kautils.h>
 #include <afs/afsint.h>
 #include <afs/volser.h>
+#include <rx/rxgk_errs.h>
+#ifdef AFS_RXGK_ENV
+# include <rx/rxgk.h>
+#endif
 
 static int IStatServer(struct cmd_syndesc *as, int int32p);
 static int DoStat(char *aname, struct rx_connection *aconn,
@@ -80,6 +84,83 @@ DateOf(time_t atime)
     return tbuffer;
 }
 
+#ifdef AFS_RXGK_ENV
+
+static int
+get_rxgk_sc(struct afsconf_dir *dir, char *hostname, afs_uint32 addr,
+	    afsconf_secflags secFlags, struct rx_securityClass **a_sc,
+	    afs_int32 *a_scIndex)
+{
+    afs_int32 code;
+    struct rx_connection *conn;
+    RXGK_Level level;
+    char *target = NULL;
+    char *keytab = NULL;
+
+    if ((secFlags & AFSCONF_SECOPTS_LOCALAUTH) != 0) {
+	/* For localauth, use the credentials in rxgk.keytab. */
+	if (asprintf(&keytab, "%s/%s", dir->name, AFSDIR_RXGK_KEYTAB_FILE) < 0) {
+	    code = ENOMEM;
+	    fprintf(stderr, "bos: error constructing keytab path\n");
+	    exit(1);
+	}
+
+	if (access(keytab, R_OK) != 0) {
+	    /*
+	     * If the keytab doesn't exist at all, bail out early to try to
+	     * avoid confusing error messages to the user later.
+	     */
+	    fprintf(stderr, "bos: Cannot access rxgk localauth keytab %s: %s\n",
+		    keytab, strerror(errno));
+	    exit(1);
+	}
+    }
+
+    conn = rx_NewConnection(addr, htons(AFSCONF_NANNYPORT), RXGK_SERVICE_ID,
+			    rxnull_NewClientSecurityObject(), RX_SECIDX_NULL);
+    if (conn == NULL) {
+	fprintf(stderr, "bos: could not create rxgk gssnegotiate connection\n");
+	exit(1);
+    }
+
+    if (asprintf(&target, "afs3-bos@%s", hostname) < 0) {
+	fprintf(stderr, "bos: could not construct rxgk target name\n");
+	exit(1);
+    }
+
+    if ((secFlags & AFSCONF_SECOPTS_ALWAYSCLEAR) != 0) {
+	level = RXGK_LEVEL_CLEAR;
+    } else if ((secFlags & AFSCONF_SECOPTS_NEVERENCRYPT) != 0) {
+	level = RXGK_LEVEL_AUTH;
+    } else {
+	level = RXGK_LEVEL_CRYPT;
+    }
+
+    code = rxgk_NegotiateClientSecObj(conn, target, level, keytab, a_sc);
+    if (code != 0) {
+	if (code == RX_INVALID_OPERATION) {
+	    fprintf(stderr, "bos: Does this server support rxgk?\n");
+	}
+	goto done;
+    }
+    *a_scIndex = RX_SECIDX_GK;
+
+ done:
+    free(target);
+    free(keytab);
+    rx_DestroyConnection(conn);
+    return code;
+}
+#else
+static int
+get_rxgk_sc(struct afsconf_dir *dir, char *hostname, afs_uint32 addr,
+	    afsconf_secflags secFlags, struct rx_securityClass **a_sc,
+	    afs_int32 *a_scIndex)
+{
+    fprintf(stderr, "bos: Cannot use rxgk credentials: rxgk not supported.\n");
+    return RXGK_INCONSISTENCY;
+}
+#endif /* AFS_RXGK_ENV */
 
 /* use the syntax descr to get a connection, authenticated appropriately.
  * aencrypt is set if we want to encrypt the data on the wire.
@@ -99,6 +180,8 @@ GetConn(struct cmd_syndesc *as, int aencrypt)
     afsconf_secflags secFlags;
     struct rx_securityClass *sc;
     afs_int32 scIndex;
+    char *rxgk_seclevel_str = NULL;
+    int cellwide_creds = 1;
 
     hostname = as->parms[0].items->data;
     th = hostutil_GetHostByName(hostname);
@@ -140,11 +223,46 @@ GetConn(struct cmd_syndesc *as, int aencrypt)
 	}
     }
 
+    if (cmd_OptionAsString(as, ADDPARMOFFSET+3, &rxgk_seclevel_str) == 0) {
+	if (strcmp(rxgk_seclevel_str, "clear") == 0) {
+	    secFlags |= AFSCONF_SECOPTS_ALWAYSCLEAR;
+	} else if (strcmp(rxgk_seclevel_str, "auth") == 0) {
+	    secFlags |= AFSCONF_SECOPTS_NEVERENCRYPT;
+	} else if (strcmp(rxgk_seclevel_str, "crypt") == 0) {
+	    /* don't need to set any flags; this is the default for rxgk */
+	} else {
+	    fprintf(STDERR, "Invalid argument to -rxgk: %s\n", rxgk_seclevel_str);
+	    exit(1);
+	}
+	secFlags |= AFSCONF_SECOPTS_RXGK;
+	free(rxgk_seclevel_str);
+	rxgk_seclevel_str = NULL;
+	cellwide_creds = 0;
+    }
+
+    if (cmd_OptionPresent(as, ADDPARMOFFSET+4)) { /* -rxgk-cellwide */
+	if ((secFlags & AFSCONF_SECOPTS_RXGK) == 0) {
+	    fprintf(STDERR, "-rxgk-cellwide can only be used with rxgk\n");
+	    exit(1);
+	}
+	cellwide_creds = 1;
+    }
+
     if (as->parms[ADDPARMOFFSET].items) /* -cell */
         cellname = as->parms[ADDPARMOFFSET].items->data;
 
-    code = afsconf_PickClientSecObj(tdir, secFlags, NULL, cellname,
-				    &sc, &scIndex, NULL);
+    if (cellwide_creds) {
+	code = afsconf_PickClientSecObj(tdir, secFlags, NULL, cellname,
+					&sc, &scIndex, NULL);
+    } else {
+	/*
+	 * For non-cellwide rxgk, we must negotiate our own tokens directly; we
+	 * don't get the tokens from the kernel.
+	 */
+	/* We can only get here via rxgk code paths */
+	opr_Assert((secFlags & AFSCONF_SECOPTS_RXGK) != 0);
+	code = get_rxgk_sc(tdir, hostname, addr, secFlags, &sc, &scIndex);
+    }
     if (code) {
 	afs_com_err("bos", code, "(configuring connection security)");
 	exit(1);
@@ -1789,6 +1907,10 @@ add_std_args(struct cmd_syndesc *ts)
 			  "don't authenticate");
     /* + 2 */ cmd_AddParm(ts, "-localauth", CMD_FLAG, CMD_OPTIONAL,
 			  "create tickets from KeyFile");
+    /* + 3 */ cmd_AddParm(ts, "-rxgk", CMD_SINGLE, CMD_OPTIONAL,
+			  "rxgk security level to use");
+    /* + 4 */ cmd_AddParm(ts, "-rxgk-cellwide", CMD_FLAG, CMD_OPTIONAL,
+			  "use rxgk cellwide key instead of per-bosserver key");
 }
 
 #include "AFS_component_version_number.c"
@@ -1839,6 +1961,9 @@ main(int argc, char **argv)
      * system */
     initialize_CMD_error_table();
     initialize_BZ_error_table();
+#ifdef AFS_RXGK_ENV
+    initialize_RXGK_error_table();
+#endif
 
     ts = cmd_CreateSyntax("start", StartServer, NULL, 0, "start running a server");
     cmd_AddParm(ts, "-server", CMD_SINGLE, 0, "machine name");
