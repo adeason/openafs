@@ -407,14 +407,14 @@ bnode_Create(char *atype, char *ainstance, struct bnode ** abp, char *ap1,
     if (notifier && strcmp(notifier, NONOTIFIER)) {
 	/* construct local path from canonical (wire-format) path */
 	if (ConstructLocalBinPath(notifier, &notifierpath)) {
-	    bozo_Log("BNODE-Create: Notifier program path invalid '%s'\n",
-		     notifier);
+	    ViceLog(0, ("BNODE-Create: Notifier program path invalid '%s'\n",
+			notifier));
 	    return BZNOCREATE;
 	}
 
 	if (stat(notifierpath, &tstat)) {
-	    bozo_Log("BNODE-Create: Notifier program '%s' not found\n",
-		     notifierpath);
+	    ViceLog(0, ("BNODE-Create: Notifier program '%s' not found\n",
+			notifierpath));
 	    free(notifierpath);
 	    return BZNOCREATE;
 	}
@@ -681,11 +681,11 @@ bproc(void *unused)
 			    tb->errorSignal = 0;
 			}
 			if (tp->coreName)
-			    bozo_Log("%s:%s exited with code %d\n", tb->name,
-				     tp->coreName, tp->lastExit);
+			    ViceLog(0, ("%s:%s exited with code %d\n", tb->name,
+					tp->coreName, tp->lastExit));
 			else
-			    bozo_Log("%s exited with code %d\n", tb->name,
-				     tp->lastExit);
+			    ViceLog(0, ("%s exited with code %d\n", tb->name,
+					tp->lastExit));
 		    } else {
 			/* Signal occurred, perhaps spurious due to shutdown request.
 			 * If due to a shutdown request, don't overwrite last error
@@ -701,22 +701,22 @@ bproc(void *unused)
 			    RememberProcName(tp);
 			}
 			if (tp->coreName)
-			    bozo_Log("%s:%s exited on signal %d%s\n",
-				     tb->name, tp->coreName, tp->lastSignal,
-				     WCOREDUMP(status) ? " (core dumped)" :
-				     "");
+			    ViceLog(0, ("%s:%s exited on signal %d%s\n",
+					tb->name, tp->coreName, tp->lastSignal,
+					WCOREDUMP(status) ? " (core dumped)" :
+					""));
 			else
-			    bozo_Log("%s exited on signal %d%s\n", tb->name,
-				     tp->lastSignal,
-				     WCOREDUMP(status) ? " (core dumped)" :
-				     "");
+			    ViceLog(0, ("%s exited on signal %d%s\n", tb->name,
+					tp->lastSignal,
+					WCOREDUMP(status) ? " (core dumped)" :
+					""));
 			SaveCore(tb, tp);
 		    }
 		    tb->lastAnyExit = FT_ApproxTime();
 
 		    if (tb->notifier) {
-			bozo_Log("BNODE: Notifier %s will be called\n",
-				 tb->notifier);
+			ViceLog(0, ("BNODE: Notifier %s will be called\n",
+				    tb->notifier));
 			hdl_notifier(tp);
 		    }
 
@@ -737,9 +737,9 @@ bproc(void *unused)
 			}
 			tb->flags |= BNODE_ERRORSTOP;
 			bnode_SetGoal(tb, BSTAT_SHUTDOWN);
-			bozo_Log
-			    ("BNODE '%s' repeatedly failed to start, perhaps missing executable.\n",
-			     tb->name);
+			ViceLog(0, ("BNODE '%s' repeatedly failed to start, "
+				    "perhaps missing executable.\n",
+				    tb->name));
 		    }
 		    BOP_PROCEXIT(tb, tp);
 		    bnode_Check(tb);
@@ -832,8 +832,8 @@ hdl_notifier(struct bnode_proc *tp)
     struct stat tstat;
 
     if (stat(tp->bnode->notifier, &tstat)) {
-	bozo_Log("BNODE: Failed to find notifier '%s'; ignored\n",
-		 tp->bnode->notifier);
+	ViceLog(0, ("BNODE: Failed to find notifier '%s'; ignored\n",
+		    tp->bnode->notifier));
 	return (1);
     }
     if ((pid = fork()) == 0) {
@@ -851,8 +851,8 @@ hdl_notifier(struct bnode_proc *tp)
 #endif
 	fout = popen(tb->notifier, "w");
 	if (fout == NULL) {
-	    bozo_Log("BNODE: Failed to find notifier '%s'; ignored\n",
-		     tb->notifier);
+	    ViceLog(0, ("BNODE: Failed to find notifier '%s'; ignored\n",
+			tb->notifier));
 	    perror(tb->notifier);
 	    exit(1);
 	}
@@ -860,8 +860,8 @@ hdl_notifier(struct bnode_proc *tp)
 	pclose(fout);
 	exit(0);
     } else if (pid < 0) {
-	bozo_Log("Failed to fork creating process to handle notifier '%s'\n",
-		 tp->bnode->notifier);
+	ViceLog(0, ("Failed to fork creating process to handle notifier '%s'\n",
+		    tp->bnode->notifier));
 	return -1;
     }
 #endif /* AFS_NT40_ENV */
@@ -1091,12 +1091,13 @@ bnode_NewProc(struct bnode *abnode, char *aexecString, char *coreName,
     osi_audit(BOSSpawnProcEvent, 0, AUD_STR, aexecString, AUD_END);
 
     if (cpid == (pid_t) - 1) {
-	bozo_Log("Failed to spawn process for bnode '%s'\n", abnode->name);
+	ViceLog(0, ("Failed to spawn process for bnode '%s'\n", abnode->name));
 	bnode_FreeTokens(tlist);
 	free(tp);
 	return errno;
     }
-    bozo_Log("%s started pid %ld: %s\n", abnode->name, cpid, aexecString);
+    ViceLog(0, ("%s started pid %d: %s\n", abnode->name, (int)cpid,
+		aexecString));
 
     bnode_FreeTokens(tlist);
     opr_queue_Prepend(&allProcs, &tp->q);
