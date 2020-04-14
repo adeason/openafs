@@ -37,14 +37,11 @@ struct ubik_trans *ubik_currentTrans = 0;
  * transactions: this is the code executed on the other servers when a
  * sync site is executing a write transaction.
  */
-afs_int32
-SDISK_Begin(struct rx_call *rxcall, struct ubik_tid *atid)
+static afs_int32
+uremote_begin(struct ubik_tid *atid)
 {
     afs_int32 code;
 
-    if ((code = ubik_CheckAuth(rxcall))) {
-	return code;
-    }
     DBHOLD(ubik_dbase);
     if (urecovery_AllBetter(ubik_dbase, 0) == 0) {
 	code = UNOQUORUM;
@@ -75,13 +72,21 @@ SDISK_Begin(struct rx_call *rxcall, struct ubik_tid *atid)
 
 
 afs_int32
-SDISK_Commit(struct rx_call *rxcall, struct ubik_tid *atid)
+SDISK_Begin(struct rx_call *rxcall, struct ubik_tid *atid)
 {
     afs_int32 code;
 
     if ((code = ubik_CheckAuth(rxcall))) {
 	return code;
     }
+    return uremote_begin(atid);
+}
+
+static afs_int32
+uremote_commit(struct ubik_tid *atid)
+{
+    afs_int32 code;
+
     ObtainWriteLock(&ubik_dbase->cache_lock);
     DBHOLD(ubik_dbase);
     if (!ubik_currentTrans) {
@@ -111,6 +116,17 @@ done:
     DBRELE(ubik_dbase);
     ReleaseWriteLock(&ubik_dbase->cache_lock);
     return code;
+}
+
+afs_int32
+SDISK_Commit(struct rx_call *rxcall, struct ubik_tid *atid)
+{
+    afs_int32 code;
+
+    if ((code = ubik_CheckAuth(rxcall))) {
+	return code;
+    }
+    return uremote_commit(atid);
 }
 
 afs_int32
@@ -187,16 +203,13 @@ done:
 }
 
 /* apos and alen are not used */
-afs_int32
-SDISK_Lock(struct rx_call *rxcall, struct ubik_tid *atid,
-	   afs_int32 afile, afs_int32 apos, afs_int32 alen, afs_int32 atype)
+static afs_int32
+uremote_lock(struct ubik_tid *atid, afs_int32 afile, afs_int32 apos,
+	     afs_int32 alen, afs_int32 atype)
 {
     afs_int32 code;
     struct ubik_trans *ubik_thisTrans;
 
-    if ((code = ubik_CheckAuth(rxcall))) {
-	return code;
-    }
     DBHOLD(ubik_dbase);
     if (!ubik_currentTrans) {
 	code = USYNC;
@@ -231,6 +244,18 @@ SDISK_Lock(struct rx_call *rxcall, struct ubik_tid *atid,
 done:
     DBRELE(ubik_dbase);
     return code;
+}
+
+afs_int32
+SDISK_Lock(struct rx_call *rxcall, struct ubik_tid *atid,
+	   afs_int32 afile, afs_int32 apos, afs_int32 alen, afs_int32 atype)
+{
+    afs_int32 code;
+
+    if ((code = ubik_CheckAuth(rxcall))) {
+	return code;
+    }
+    return uremote_lock(atid, afile, apos, alen, atype);
 }
 
 /*!
@@ -764,16 +789,12 @@ printServerInfo(void)
     }
 }
 
-afs_int32
-SDISK_SetVersion(struct rx_call *rxcall, struct ubik_tid *atid,
-		 struct ubik_version *oldversionp,
-		 struct ubik_version *newversionp)
+static afs_int32
+uremote_setversion(struct ubik_tid *atid, struct ubik_version *oldversionp,
+		   struct ubik_version *newversionp)
 {
     afs_int32 code = 0;
 
-    if ((code = ubik_CheckAuth(rxcall))) {
-	return (code);
-    }
     DBHOLD(ubik_dbase);
     if (!ubik_currentTrans) {
 	code = USYNC;
@@ -818,4 +839,16 @@ SDISK_SetVersion(struct rx_call *rxcall, struct ubik_tid *atid,
 done:
     DBRELE(ubik_dbase);
     return code;
+}
+
+afs_int32
+SDISK_SetVersion(struct rx_call *rxcall, struct ubik_tid *atid,
+		 struct ubik_version *oldversionp,
+		 struct ubik_version *newversionp)
+{
+    afs_int32 code = 0;
+    if ((code = ubik_CheckAuth(rxcall))) {
+	return (code);
+    }
+    return uremote_setversion(atid, oldversionp, newversionp);
 }
