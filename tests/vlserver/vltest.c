@@ -29,6 +29,8 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
+#include <afs/okv.h>
+
 #include "vltest.h"
 
 static char *vos;
@@ -418,12 +420,17 @@ struct ubiktest_dataset vlsmall = {
 
     .dbtest_func = vltest_dbtest,
     .tests = vlsmall_tests,
+    .n_dbtests = 18,
     .create_func = vlsmall_create,
     .existing_dbs = {
 	{
 	    .name = "vldb4",
 	    .flat_path = "tests/vlserver/db.vlsmall/vldb4.DB0",
 	    .getfile_path = "tests/vlserver/db.vlsmall/vldb4.getfile",
+	},
+	{
+	    .name = "vldb4-kv",
+	    .kv_path = "tests/vlserver/db.vlsmall/vldb4kv.lmdb",
 	},
     },
 };
