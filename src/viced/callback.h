@@ -83,9 +83,8 @@ struct VCBParams {
 
 
 /* callback hash macros */
-#define FEHASH_SIZE 512		/* Power of 2 */
-#define FEHASH_MASK (FEHASH_SIZE-1)
-#define FEHash(volume, unique) (((volume)+(unique))&(FEHASH_MASK))
+#define FEHASH_SIZE_OLD 512		/* Historical hard-coded FEhashsize */
+#define FEHash(volume, unique) (((volume)+(unique))&(FEhashsize - 1))
 
 #define CB_NUM_TIMEOUT_QUEUES 128
 
