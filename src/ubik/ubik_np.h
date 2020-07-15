@@ -37,6 +37,31 @@
 
 /*** ubik.c ***/
 
+struct ubik_serverinit_opts {
+    /* IP addr of this host. */
+    afs_uint32 myHost;
+
+    /* Port to bind to. */
+    short myPort;
+
+    /* Cell info (provide this or 'serverList'). */
+    struct afsconf_cell *info;
+
+    /* Which servers in 'info' are clones. (If clones[i] is nonzero, then
+     * info->hostAddr[i] is a clone.) */
+    char *clones;
+
+    /* Set of ubik server IP addrs; terminated by a 0. Provide this instead of
+     * 'info'. Does not include 'myHost'. */
+    afs_uint32 *serverList;
+
+    /* Initial prefix used for naming storage files used by this system. */
+    const char *pathName;
+};
+
+int ubik_ServerInitByOpts(struct ubik_serverinit_opts *opts,
+			  struct ubik_dbase **dbase);
+
 struct ubik_rawinit_opts {
     int r_create;
     int r_rw;
