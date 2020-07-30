@@ -283,6 +283,7 @@ ubiktest_runtest(struct ubiktest_dataset *ds, struct ubiktest_ops *ops)
     dbdef = find_dbdef(ds, use_db);
     if (dbdef != NULL) {
 	src_db = get_dbpath(dbdef, &skip_reason);
+	cbinfo.src_dbpath = src_db;
     }
     cbinfo.src_dbdef = dbdef;
 
@@ -830,8 +831,8 @@ db_equal_kv(char *path_a, char *path_b)
     return equal;
 }
 
-static int
-db_equal(char *path_a, char *path_b)
+int
+ubiktest_db_equal(char *path_a, char *path_b)
 {
     int isdir_a = 0;
     int isdir_b = 0;
@@ -882,7 +883,7 @@ frztest_dump(struct ubiktest_cbinfo *info, struct ubiktest_ops *ops)
 
     ctl_run(info->confdir, frzops->suite, "db-dump", "-output %s", dump_path);
 
-    ok(db_equal(test->db_path, dump_path), "dumped db matches");
+    ok(ubiktest_db_equal(test->db_path, dump_path), "dumped db matches");
 
     opr_Verify(udb_delpath(dump_path) == 0);
 
@@ -923,10 +924,10 @@ frztest_restore(struct ubiktest_cbinfo *info, struct ubiktest_ops *ops)
     ctl_run(info->confdir, frzops->suite, "db-restore",
 	    "-input %s %s", test->db_path, args);
 
-    ok(db_equal(test->db_path, info->db_path), "restored db matches");
+    ok(ubiktest_db_equal(test->db_path, info->db_path), "restored db matches");
 
     if (test->backup_db) {
-	ok(db_equal(blankdb_path, bak_path), "db backup matches");
+	ok(ubiktest_db_equal(blankdb_path, bak_path), "db backup matches");
     }
 
     free(blankdb_path);
@@ -983,7 +984,7 @@ frztest_install(struct ubiktest_cbinfo *info, struct ubiktest_ops *ops)
     ctl_run(info->confdir, frzops->suite, "db-install",
 	    "-input %s -no-backup", new_path);
 
-    ok(db_equal(test->db_path, info->db_path), "restored db matches");
+    ok(ubiktest_db_equal(test->db_path, info->db_path), "restored db matches");
 
     code = access(new_path, F_OK);
     errno_save = errno;
@@ -1152,7 +1153,7 @@ frztest_revert(struct ubiktest_cbinfo *info, struct ubiktest_ops *ops)
 			    "separate db-freeze-abort command runs successfully");
     }
 
-    ok(db_equal(test->db_path, info->db_path), "reverted db matches");
+    ok(ubiktest_db_equal(test->db_path, info->db_path), "reverted db matches");
 
     free(fifo_start);
     free(fifo_end);
@@ -1197,7 +1198,7 @@ frztest_dist(struct ubiktest_cbinfo *info, struct ubiktest_ops *ops)
 
     is_command(&cmdinfo, "nested db-restore/dist fails correctly");
 
-    ok(db_equal(test->db_path, info->db_path), "db matches");
+    ok(ubiktest_db_equal(test->db_path, info->db_path), "db matches");
 
     free(db_restore);
     free(frz_dist);
