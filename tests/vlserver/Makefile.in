@@ -4,7 +4,7 @@ abs_top_builddir=@abs_top_builddir@
 include @TOP_OBJDIR@/src/config/Makefile.config
 include @TOP_OBJDIR@/src/config/Makefile.pthread
 
-BINS = badversion-t check4-t freeze-t recovery-t vldb4-t vldb4-kv-t
+BINS = badversion-t check4-t check4-kv-t freeze-t recovery-t vldb4-t vldb4-kv-t
 
 MODULE_CFLAGS=-I$(TOP_OBJDIR) -I$(srcdir)/../common/
 
@@ -25,6 +25,10 @@ badversion-t: badversion-t.o
 
 check4-t: check4-t.o $(vltest_deps)
 	$(LT_LDRULE_static) check4-t.o $(vltest_libs)
+
+CFLAGS_check4-kv-t.o = -I$(TOP_SRCDIR)/ubik
+check4-kv-t: check4-kv-t.o $(vltest_deps)
+	$(LT_LDRULE_static) check4-kv-t.o $(vltest_libs)
 
 freeze-t: freeze-t.o $(vltest_deps)
 	$(LT_LDRULE_static) freeze-t.o $(vltest_libs)
