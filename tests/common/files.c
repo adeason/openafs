@@ -122,3 +122,34 @@ afstest_obj_path(char *path)
 {
     return path_from_tdir("C_TAP_BUILD", path);
 }
+
+int
+afstest_file_contains(char *path, char *target)
+{
+    FILE *fh;
+    char line[128];
+
+    fh = fopen(path, "r");
+    if (fh == NULL) {
+	diag("%s: Failed to open %s", __func__, path);
+	goto failure;
+    }
+
+    while (fgets(line, sizeof(line), fh) != NULL) {
+	if (strstr(line, target) != NULL) {
+	    goto success;
+	}
+    }
+
+ failure:
+    if (fh != NULL) {
+	fclose(fh);
+    }
+    return 0;
+
+ success:
+    if (fh != NULL) {
+	fclose(fh);
+    }
+    return 1;
+}
