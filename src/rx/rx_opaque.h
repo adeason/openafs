@@ -30,6 +30,10 @@ struct rx_opaque {
     void *val;
 };
 
+struct rx_opaque_stringbuf {
+    char sbuf[64];
+};
+
 #define RX_EMPTY_OPAQUE {0, NULL}
 
 struct rx_opaque *rx_opaque_new(void *data, size_t datalen);
@@ -40,5 +44,7 @@ void rx_opaque_freeContents(struct rx_opaque *buf);
 void rx_opaque_zeroFreeContents(struct rx_opaque *buf);
 void rx_opaque_free(struct rx_opaque **buf);
 void rx_opaque_zeroFree(struct rx_opaque **buf);
+char *rx_opaque_stringify(struct rx_opaque *buf,
+			  struct rx_opaque_stringbuf *str);
 
 #endif
