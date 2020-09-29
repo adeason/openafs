@@ -205,3 +205,64 @@ rx_opaque_zeroFree(struct rx_opaque **a_buf)
     rx_opaque_zeroFreeContents(buf);
     rxi_Free(buf, sizeof(*buf));
 }
+
+/*!
+ * Format an opaque object into a human-readable string.
+ *
+ * For example, given an opaque object like this:
+ *
+ * struct rx_opaque buf = {
+ *     .len = 4,
+ *     .val = "\xde\xad\xbe\xef",
+ * }
+ *
+ * And printing that opaque like this:
+ *
+ * struct rx_opaque_stringbuf strbuf;
+ * printf("%s\n", rx_opaque_stringify(&buf, &strbuf));
+ *
+ * Prints the string "4:deadbeef". If the opaque data is too big to be
+ * formatted into the buffer, the hex data will be silently truncated, but the
+ * truncation is noticeable since the length is printed separately.
+ *
+ * @param buf
+ *	The opaque object
+ * @param strbuf
+ *	Storage space for the formatted buffer
+ * @returns
+ *	A char* pointer to the given strbuf
+ */
+
+char *
+rx_opaque_stringify(struct rx_opaque *buf, struct rx_opaque_stringbuf *strbuf)
+{
+    char *str = &strbuf->sbuf[0];
+    size_t remain = sizeof(*strbuf) - 1;
+    int byte_i;
+    int nbytes;
+
+    memset(strbuf, 0, sizeof(*strbuf));
+
+    nbytes = snprintf(str, remain, "%ld:", (long)buf->len);
+    if (nbytes >= remain) {
+	goto done;
+    }
+
+    str += nbytes;
+    remain -= nbytes;
+
+    for (byte_i = 0; byte_i < buf->len; byte_i++) {
+	unsigned char byte = ((unsigned char*)buf->val)[byte_i];
+
+	nbytes = snprintf(str, remain, "%02x", byte);
+	if (nbytes >= remain) {
+	    goto done;
+	}
+
+	str += nbytes;
+	remain -= nbytes;
+    }
+
+ done:
+    return &strbuf->sbuf[0];
+}

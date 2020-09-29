@@ -19,6 +19,7 @@ opr/uuid
 ptserver/pt_util
 ptserver/pts-man
 rx/event
+rx/opaque
 rx/perf
 volser/vos-man
 volser/vos
