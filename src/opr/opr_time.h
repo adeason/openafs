@@ -22,108 +22,301 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-/* This header provides routines for dealing with the 100ns based AFS
- * time type. We hide the actual variable behind a structure, so that
- * attempts to do
+/*
+ * This header provides routines for dealing with the 100ns based AFS time
+ * type, afs_time64. With this type, time is represented in units of 100ns,
+ * sometimes called "clunks". Absolute time is the same as with unix time (time
+ * since the unix epoch of 1 Jan 1970 UTC, skipping leap seconds), except
+ * represented in clunks instead of seconds. The count of clunks is always
+ * recorded in a signed 64-bit integer.
+ *
+ * The actual integer is hidden inside a structure, so that accidental
+ * assignment like this will fail during compilation:
  *
  *     time_t ourTime;
- *     opr_time theirTime;
+ *     struct afs_time64 theirTime;
  *
  *     ourTime = theirTime;
  *
- * will be caught by the compiler.
+ * But any callers can still easily access the underlying raw int64 by just
+ * looking at "theirTime.clunks". The name of the internal field is a bit
+ * obnoxious, which mildly discourages callers from interacting with the raw
+ * value.
  */
 
 #ifndef OPENAFS_OPR_TIME_H
 #define OPENAFS_OPR_TIME_H
 
-struct opr_time {
-    afs_int64 time;
-};
+#include <afs/opr.h>
+#if defined(KERNEL) && !defined(UKERNEL)
+# include "afs/sysincludes.h"
+#else
+# include <errno.h>
+# include <stdio.h>
+# include <stdlib.h>
+# include <string.h>
+# include <sys/time.h>
+# include <time.h>
+#endif
 
-#define OPR_TIME_INIT {0LL}
+#define OPR_TIME64_CLUNKS_PER_US    (10LL)
+#define OPR_TIME64_CLUNKS_PER_MS    (OPR_TIME64_CLUNKS_PER_US * 1000LL)
+#define OPR_TIME64_CLUNKS_PER_SEC   (OPR_TIME64_CLUNKS_PER_MS * 1000LL)
 
-static_inline void
-opr_time_FromSecs(struct opr_time *out, time_t in)
+#define OPR_TIME64_MAX_SECS  (922337203685LL)
+#define OPR_TIME64_MIN_SECS (-922337203685LL)
+
+#define OPR_TIME64_MAX_MICROSECS  (922337203685477580LL)
+#define OPR_TIME64_MIN_MICROSECS (-922337203685477580LL)
+
+#define OPR_TIME64_MAX_CLUNKS (0x7FFFFFFFFFFFFFFFLL)
+#define OPR_TIME64_MIN_CLUNKS (-OPR_TIME64_MAX_CLUNKS - 1)
+
+static_inline int
+opr_time64_cmp(struct afs_time64 t1, struct afs_time64 t2)
 {
-    out->time = ((afs_int64)in) * 10000000;
-}
-
-static_inline time_t
-opr_time_ToSecs(struct opr_time *in)
-{
-    return in->time/10000000;;
-}
-
-static_inline void
-opr_time_FromMsecs(struct opr_time *out, int msecs)
-{
-    out->time = ((afs_int64)msecs) * 10000;
+    if (t1.clunks > t2.clunks) {
+	return 1;
+    }
+    if (t1.clunks < t2.clunks) {
+	return -1;
+    }
+    return 0;
 }
 
 static_inline int
-opr_time_ToMsecs(struct opr_time *in)
+opr_time64_lt(struct afs_time64 t1, struct afs_time64 t2)
 {
-    return in->time/10000;
-}
-
-static_inline void
-opr_time_FromTimeval(struct opr_time *out, struct timeval *in)
-{
-    out->time = ((afs_int64)in->tv_sec) * 10000000 + in->tv_usec * 10;
-}
-
-static_inline void
-opr_time_ToTimeval(struct opr_time *in, struct timeval *out)
-{
-    out->tv_sec = in->time / 10000000;
-    out->tv_usec = (in->time / 10) % 1000000;
+    return opr_time64_cmp(t1, t2) < 0;
 }
 
 static_inline int
-opr_time_Now(struct opr_time *out)
+opr_time64_lteq(struct afs_time64 t1, struct afs_time64 t2)
+{
+    return opr_time64_cmp(t1, t2) <= 0;
+}
+
+static_inline int
+opr_time64_gt(struct afs_time64 t1, struct afs_time64 t2)
+{
+    return opr_time64_cmp(t1, t2) > 0;
+}
+
+static_inline int
+opr_time64_gteq(struct afs_time64 t1, struct afs_time64 t2)
+{
+    return opr_time64_cmp(t1, t2) >= 0;
+}
+static_inline int
+opr_time64_eq(struct afs_time64 t1, struct afs_time64 t2)
+{
+    return opr_time64_cmp(t1, t2) == 0;
+}
+
+/*
+ * *out = in + add
+ *
+ * If the result cannot be represented, return ERANGE.
+ */
+static_inline int
+opr_time64_add_safe(struct afs_time64 in, struct afs_time64 add,
+		    struct afs_time64 *out)
+{
+    if (in.clunks > 0 && add.clunks > 0) {
+	if (in.clunks > OPR_TIME64_MAX_CLUNKS - add.clunks) {
+	    return ERANGE;
+	}
+    }
+    if (in.clunks < 0 && add.clunks < 0) {
+	if (in.clunks < OPR_TIME64_MIN_CLUNKS - add.clunks) {
+	    return ERANGE;
+	}
+    }
+    out->clunks = in.clunks + add.clunks;
+    return 0;
+}
+
+/*
+ * Initialize an afs_time64 from the given number of clunks. This should not
+ * usually be necessary, except when decoding an afs_time64 from the wire or
+ * the net, etc. It is preferred to use this function instead of setting an
+ * afs_time64's clunks directly, to make it easier to track who is doing this
+ * if needed.
+ */
+static_inline struct afs_time64
+opr_time64_fromClunks(afs_int64 clunks)
+{
+    struct afs_time64 val;
+    val.clunks = clunks;
+    return val;
+}
+
+/*
+ * Initialize an afs_time64 from the given number of seconds. If the result
+ * cannot be represented as an afs_time64, return ERANGE.
+ */
+static_inline int
+opr_time64_fromSecs_safe(afs_int64 in, struct afs_time64 *out)
+{
+    if (in < OPR_TIME64_MIN_SECS || in > OPR_TIME64_MAX_SECS) {
+	return ERANGE;
+    }
+    out->clunks = in * OPR_TIME64_CLUNKS_PER_SEC;
+    return 0;
+}
+
+/*
+ * Same as opr_time64_fromSecs_safe(), but asserts on error. Do NOT use with
+ * untrusted data!
+ */
+static_inline struct afs_time64
+opr_time64_fromSecs(afs_int64 in)
+{
+    struct afs_time64 val;
+    opr_Verify(opr_time64_fromSecs_safe(in, &val) == 0);
+    return val;
+}
+
+static_inline int
+opr_time64_fromMicrosecs_safe(afs_int64 in, struct afs_time64 *out)
+{
+    if (in < OPR_TIME64_MIN_MICROSECS || in > OPR_TIME64_MAX_MICROSECS) {
+	return ERANGE;
+    }
+    out->clunks = in * OPR_TIME64_CLUNKS_PER_US;
+    return 0;
+}
+
+/*
+ * Similar to opr_time64_fromSecs_safe(), but the given time is given in
+ * seconds and microseconds.
+ *
+ * This doesn't take a struct timeval directly for convenience when we're
+ * dealing with timeval-like structs that aren't literally struct timeval
+ * (e.g., struct rx_clock, or some KERNEL environments).
+ */
+static_inline int
+opr_time64_fromTimeval_safe(afs_int64 sec, afs_int64 microsec,
+			    struct afs_time64 *out)
+{
+    int code;
+    struct afs_time64 val;
+    struct afs_time64 val_usec;
+
+    code = opr_time64_fromSecs_safe(sec, &val);
+    if (code != 0) {
+	return code;
+    }
+
+    code = opr_time64_fromMicrosecs_safe(microsec, &val_usec);
+    if (code != 0) {
+	return code;
+    }
+
+    return opr_time64_add_safe(val, val_usec, out);
+}
+
+/*
+ * Get the raw 'clunks' value from the given afs_time64. This should not
+ * usually be necessary, but it is preferred to use this over directly
+ * referencing the 'clunks' field, to make it easier to track who is using this
+ * and make it less likely to accidentally modify the 'clunks' field.
+ */
+static_inline afs_int64
+opr_time64_toClunks(struct afs_time64 in)
+{
+    return in.clunks;
+}
+
+/* 'long long' version of opr_time64_toClunks() for printf() convenience. */
+static_inline long long
+opr_time64_toClunksLL(struct afs_time64 in)
+{
+    return opr_time64_toClunks(in);
+}
+
+/*
+ * Convert the given afs_time64 time into whole seconds. This does not return
+ * errors, but is "safer" than opr_time64_toSecs() because the output argument
+ * prevents us from accidentally truncating the result in a 32-bit int.
+ */
+static_inline void
+opr_time64_toSecs_safe(struct afs_time64 in, afs_int64 *out)
+{
+    *out = in.clunks / OPR_TIME64_CLUNKS_PER_SEC;
+}
+
+/*
+ * More convenient form of opr_time64_toSecs_safe(), when we're sure we're not
+ * truncating a value, and using opr_time64_toSecs_safe() is very cumbersome.
+ */
+static_inline afs_int64
+opr_time64_toSecs(struct afs_time64 in)
+{
+    afs_int64 val;
+    opr_time64_toSecs_safe(in, &val);
+    return val;
+}
+
+/*
+ * Same as opr_time64_toSecs_safe(), but converts the time into seconds
+ * represented by an afs_uint32. If the result cannot be represented as an
+ * afs_uint32, the returned value wraps around.
+ *
+ * That is: 2^32   -> 0
+ *	    2^32+1 -> 1
+ *	    -1	   -> 2^32-1
+ */
+static_inline void
+opr_time64_toUint32_wrap(struct afs_time64 in, afs_uint32 *out)
+{
+    static const afs_int64 limit = MAX_AFS_UINT32 + 1LL;
+    afs_int64 secs;
+    opr_time64_toSecs_safe(in, &secs);
+    *out = (secs % limit + limit) % limit;
+}
+
+#if !defined(KERNEL) || defined(UKERNEL)
+static_inline int
+opr_time64_now_safe(struct afs_time64 *out)
 {
     struct timeval tv;
-    int code;
-
-    code = gettimeofday(&tv, NULL);
-    if (code == 0)
-	opr_time_FromTimeval(out, &tv);
-
-    return code;
+    if (gettimeofday(&tv, NULL) != 0) {
+	/*
+	 * Even for _safe(), don't return an error. The only possible error is
+	 * maybe EFAULT; if that happens, that's basically a segfault, so act
+	 * like a segfault happened and crash.
+	 *
+	 * Do not call opr_Verify/opr_Assert, since opr_Assert calls this.
+	 */
+	opr_abort();
+	return EIO;
+    }
+    return opr_time64_fromTimeval_safe(tv.tv_sec, tv.tv_usec, out);
 }
 
-static_inline int
-opr_time_GreaterThan(struct opr_time *t1, struct opr_time *t2)
-{
-    return t1->time > t2->time;
-}
-
-static_inline int
-opr_time_LessThan(struct opr_time *t1, struct opr_time *t2)
-{
-    return t1->time < t2->time;
-}
-
-static_inline void
-opr_time_Add(struct opr_time *t1, struct opr_time *t2)
-{
-    t1->time += t2->time;
-}
-
-static_inline void
-opr_time_Sub(struct opr_time *t1, struct opr_time *t2)
-{
-    t1->time -= t2->time;
-}
-
-static_inline void
-opr_time_AddMsec(struct opr_time *t1, int msec)
-{
-    struct opr_time t2;
-
-    opr_time_FromMsecs(&t2, msec);
-    opr_time_Add(t1, &t2);
-}
-
+#if defined(__GNUC__) && __GNUC__ <= 4
+/*
+ * gcc 4.8.8 has been seen to erroneously flag the return value from
+ * opr_time64_now() as maybe uninitialized. Work around it by always
+ * initializing the return value up front for older gcc, without sacrificing
+ * compiler uninitialized warnings on platforms or newer gcc.
+ */
+# define WORKAROUND_WUNINITIALIZED
 #endif
+
+static_inline struct afs_time64
+opr_time64_now(void)
+{
+    struct afs_time64 now;
+#ifdef WORKAROUND_WUNINITIALIZED
+    now.clunks = 0;
+#endif
+
+    opr_Verify(opr_time64_now_safe(&now) == 0);
+    opr_Assert(now.clunks != 0);
+    return now;
+}
+#endif /* !KERNEL || UKERNEL */
+
+#endif /* OPENAFS_OPR_TIME_H */

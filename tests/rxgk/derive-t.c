@@ -31,6 +31,7 @@
 #include <rx/rxgk.h>
 #include <afs/rfc3961.h>
 #include <afs/opr.h>
+#include <opr/time.h>
 
 #include <tests/tap/basic.h>
 #include <assert.h>
@@ -65,7 +66,7 @@ main(void)
 
 	afs_uint32 epoch;
 	afs_uint32 cid;
-	rxgkTime start_time;
+	afs_int64 start_clunks;
 	afs_uint32 key_number;
 
     } *tc, test_cases[] = {
@@ -74,7 +75,7 @@ main(void)
 	    OPAQUE("1234567890123456"),
 	    OPAQUE("\x61\x8b\xbb\xaa\x4c\xb8\xd9\x82\xb3\x09\x7c\x67\x95\x40\x40\x9f"),
 	    ETYPE_AES128_CTS_HMAC_SHA1_96,
-	    /*   epoch	       cid	    start_time	 key_number */
+	    /*   epoch	       cid	   start_clunks	key_number */
 	    1571007429, 0x760a9c24, 15710085940000001LL, 1
 	},
 	{
@@ -136,6 +137,7 @@ main(void)
 	rxgk_key k0 = NULL;
 	rxgk_key tk = NULL;
 	struct rx_opaque keydata;
+	struct afs_time64 start_time = opr_time64_fromClunks(tc->start_clunks);
 
 	memset(&keydata, 0, sizeof(keydata));
 
@@ -144,7 +146,7 @@ main(void)
 	is_int(code, 0, "[%s] rxgk_make_key() == 0", tc->descr);
 
 	code = rxgk_derive_tk(&tk, k0, tc->epoch, tc->cid,
-			      tc->start_time, tc->key_number);
+			      start_time, tc->key_number);
 	is_int(code, 0, "[%s] rxgk_derive_tk() == 0", tc->descr);
 
 	key2data(tk, &keydata);

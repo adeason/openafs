@@ -200,6 +200,11 @@ struct afsUUID {
 };
 typedef struct afsUUID afsUUID;
 
+struct afs_time64 {
+    /* Number of 100ns units ("clunks") since the unix epoch. */
+    afs_int64 clunks;
+};
+
 #if defined(BUILD_RXGK) && defined(AFS_PTHREAD_ENV) && !defined(KERNEL)
 /* Only build GSS bits of code on non-kernel pthread builds */
 # define AFS_RXGK_GSS_ENV 1
