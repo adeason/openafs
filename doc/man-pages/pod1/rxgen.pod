@@ -713,6 +713,31 @@ is very similar to the handling of strings thus you might need to review
 the strings section above; note that the linked lists are handled somewhat
 differently...
 
+=head2 Shared Structs
+
+Shared structs are the same as structs, but the associated xdr routine is
+written to the generated header file (as a macro), instead of the generated xdr
+C file. This can make it more convenient to define a struct in one .xg file,
+and have it be referenced by other .xg files.
+
+Sample declaration:
+
+    shared_struct data {
+        afs_int32 field;
+    };
+
+Sample generated header:
+
+    struct data {
+        int field;
+    };
+    typedef struct data data;
+
+    #define xdr_data(xdrs, objp) ( \
+        (!xdr_int((xdrs), &(objp)->field)) ? FALSE : \
+        TRUE \
+    )
+
 =head2 Miscellaneous examples
 
 Below is an abbreviated version of a random interface file which shows

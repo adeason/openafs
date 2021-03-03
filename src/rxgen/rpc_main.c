@@ -370,10 +370,19 @@ c_output(char *infile, char *define, int extend, char *outfile, int append)
 
     tell = ftell(fout);
     while ((def = get_definition())) {
-	if (!yflag) {
-	    if ((!IsRxgenDefinition(def)) && def->def_kind != DEF_CUSTOMIZED)
-		emit(def);
+	if (yflag) {
+	    continue;
 	}
+	if (IsRxgenDefinition(def)) {
+	    continue;
+	}
+	if (def->def_kind == DEF_CUSTOMIZED) {
+	    continue;
+	}
+	if (def->def_kind == DEF_SHARED_STRUCT) {
+	    continue;
+	}
+	emit(def);
     }
 
     /*

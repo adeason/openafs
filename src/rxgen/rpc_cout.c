@@ -45,8 +45,9 @@
 static int findtype(definition * def, char *type);
 static int undefined(char *type);
 static void print_header(definition * def);
-static void print_trailer(void);
-static void print_ifopen(int indent, char *name);
+static void print_trailer(definition * def);
+static void print_xdrfree(definition * def);
+static void print_ifopen(int indent);
 static void print_ifarg(char *arg);
 static void print_ifarg_with_cast(int ptr_to, char *type, char *arg);
 static void print_ifsizeof(char *prefix, char *type);
@@ -57,8 +58,10 @@ static void print_ifstat(int indent, char *prefix, char *type, relation rel,
 static void emit_enum(definition * def);
 static void emit_union(definition * def);
 static void emit_struct(definition * def);
+static void emit_shared_struct(definition * def);
 static void emit_typedef(definition * def);
 static void print_stat(declaration * dec);
+static void print_stat_macro(declaration * dec);
 static void print_hout(declaration * dec);
 static void print_cout(declaration * dec);
 static void print_rxifopen(char *typename);
@@ -86,13 +89,20 @@ emit(definition * def)
     case DEF_STRUCT:
 	emit_struct(def);
 	break;
+    case DEF_SHARED_STRUCT:
+	emit_shared_struct(def);
+	break;
     case DEF_TYPEDEF:
 	emit_typedef(def);
 	break;
     default:
 	break;
     }
-    print_trailer();
+    print_trailer(def);
+
+    print_xdrfree(def);
+
+    space();
 }
 
 static int
@@ -119,35 +129,66 @@ static void
 print_header(definition * def)
 {
     space();
-    f_print(fout, "void\n");
-    f_print(fout, "xdrfree_%s(%s *objp)", def->def_name, def->def_name);
-    f_print(fout, "{\n");
-    f_print(fout, "\t(void)xdr_free((xdrproc_t) xdr_%s, objp);\n",
-		  def->def_name);
-    f_print(fout, "}\n");
-
-    f_print(fout, "bool_t\n");
-    f_print(fout, "xdr_%s(XDR *xdrs, ", def->def_name);
-    f_print(fout, "%s ", def->def_name);
-    f_print(fout, "*");
-    f_print(fout, "objp)\n");
-    f_print(fout, "{\n");
+    if (def->def_kind == DEF_SHARED_STRUCT) {
+	f_print(fout, "#define xdr_%s(xdrs, objp) ( \\\n", def->def_name);
+    } else {
+	f_print(fout, "bool_t\n");
+	f_print(fout, "xdr_%s(XDR *xdrs, ", def->def_name);
+	f_print(fout, "%s ", def->def_name);
+	f_print(fout, "*");
+	f_print(fout, "objp)\n");
+	f_print(fout, "{\n");
+    }
 }
 
 static void
-print_trailer(void)
+print_trailer(definition * def)
 {
-    f_print(fout, "\treturn (TRUE);\n");
-    f_print(fout, "}\n");
-    space();
+    if (def != NULL && def->def_kind == DEF_SHARED_STRUCT) {
+	f_print(fout, "\tTRUE \\\n");
+	f_print(fout, ")\n");
+    } else {
+	f_print(fout, "\treturn (TRUE);\n");
+	f_print(fout, "}\n");
+    }
 }
 
+static void
+print_xdrfree(definition * def)
+{
+    if (def->def_kind == DEF_SHARED_STRUCT) {
+	f_print(fout, "#define xdrfree_%s(objp) do { \\\n", def->def_name);
+	f_print(fout, "\t(void)xdr_free((xdrproc_t) xdr_%s, objp); \\\n",
+		def->def_name);
+	f_print(fout, "} while (0)\n");
+
+    } else {
+	f_print(fout, "void\n");
+	f_print(fout, "xdrfree_%s(%s *objp)", def->def_name, def->def_name);
+	f_print(fout, "{\n");
+	f_print(fout, "\t(void)xdr_free((xdrproc_t) xdr_%s, objp);\n",
+		      def->def_name);
+	f_print(fout, "}\n");
+    }
+}
 
 static void
-print_ifopen(int indent, char *name)
+print_xdropen(char *name)
+{
+    f_print(fout, "xdr_%s((xdrs)", name);
+}
+
+static void
+print_xdrclose(void)
+{
+    f_print(fout, ")");
+}
+
+static void
+print_ifopen(int indent)
 {
     tabify(fout, indent);
-    f_print(fout, "if (!xdr_%s(xdrs", name);
+    f_print(fout, "if (!");
 }
 
 
@@ -185,7 +226,7 @@ print_ifsizeof(char *prefix, char *type)
 static void
 print_ifclose(int indent)
 {
-    f_print(fout, ")) {\n");
+    f_print(fout, ") {\n");
     tabify(fout, indent);
     f_print(fout, "\treturn (FALSE);\n");
     tabify(fout, indent);
@@ -235,15 +276,15 @@ print_ifarg_len(char *objname, char *name)
 }
 
 static void
-print_ifstat(int indent, char *prefix, char *type, relation rel, char *amax,
-	     char *objname, char *name)
+print_xdrcall(char *prefix, char *type, relation rel, char *amax,
+	      char *objname, char *name)
 {
     char *alt = NULL;
     char *altcast = NULL;
 
     switch (rel) {
     case REL_POINTER:
-	print_ifopen(indent, "pointer");
+	print_xdropen("pointer");
 	print_ifarg_with_cast(1, "char *", objname);
 	print_ifsizeof(prefix, type);
 	break;
@@ -255,14 +296,14 @@ print_ifstat(int indent, char *prefix, char *type, relation rel, char *amax,
             altcast = "caddr_t";
 	}
 	if (alt) {
-	    print_ifopen(indent, alt);
+	    print_xdropen(alt);
             if (altcast) {
                 print_ifarg_with_cast(0, altcast, objname);
             } else {
                 print_ifarg(objname);
             }
 	} else {
-	    print_ifopen(indent, "vector");
+	    print_xdropen("vector");
 	    print_ifarg_with_cast(1, "char", objname);
 	}
 	print_ifarg(amax);
@@ -275,24 +316,16 @@ print_ifstat(int indent, char *prefix, char *type, relation rel, char *amax,
 	    alt = "string";
 	} else if (streq(type, "opaque")) {
 	    alt = "bytes";
-	    tabify(fout, indent);
-	    f_print(fout, "{\n");
-	    ++indent;
-	    tabify(fout, indent);
-	    f_print(fout, "u_int __len = (u_int) ");
-	    f_print(fout, "*(");
-	    print_ifarg_len(objname, name);
-	    f_print(fout, ");\n");
 	}
 	if (streq(type, "string")) {
-	    print_ifopen(indent, alt);
+	    print_xdropen(alt);
 	    print_ifarg(objname);
 	} else {
 	    if (alt) {
-		print_ifopen(indent, alt);
+		print_xdropen(alt);
                 print_ifarg("(char **)");
 	    } else {
-		print_ifopen(indent, "array");
+		print_xdropen("array");
                 print_ifarg("(caddr_t *)");
 	    }
 	    print_ifarg_val(objname, name);
@@ -309,11 +342,32 @@ print_ifstat(int indent, char *prefix, char *type, relation rel, char *amax,
 	}
 	break;
     case REL_ALIAS:
-	print_ifopen(indent, type);
+	print_xdropen(type);
 	print_ifarg(objname);
 	break;
     }
+    print_xdrclose();
+}
+
+static void
+print_ifstat(int indent, char *prefix, char *type, relation rel, char *amax,
+	     char *objname, char *name)
+{
+    if (rel == REL_ARRAY && streq(type, "opaque")) {
+        tabify(fout, indent);
+        f_print(fout, "{\n");
+        ++indent;
+        tabify(fout, indent);
+        f_print(fout, "u_int __len = (u_int) ");
+        f_print(fout, "*(");
+        print_ifarg_len(objname, name);
+        f_print(fout, ");\n");
+    }
+
+    print_ifopen(indent);
+    print_xdrcall(prefix, type, rel, amax, objname, name);
     print_ifclose(indent);
+
     if (rel == REL_ARRAY && streq(type, "opaque")) {
 	tabify(fout, indent);
 	f_print(fout, "*(");
@@ -324,15 +378,16 @@ print_ifstat(int indent, char *prefix, char *type, relation rel, char *amax,
 	tabify(fout, indent);
 	f_print(fout, "}\n");
     }
-
 }
 
 
 static void
 emit_enum(definition * def)
 {
-    print_ifopen(1, "enum");
+    print_ifopen(1);
+    print_xdropen("enum");
     print_ifarg("(enum_t *)objp");
+    print_xdrclose();
     print_ifclose(1);
 }
 
@@ -403,7 +458,15 @@ emit_struct(definition * def)
     }
 }
 
+static void
+emit_shared_struct(definition * def)
+{
+    decl_list *dl;
 
+    for (dl = def->def.st.decls; dl != NULL; dl = dl->next) {
+	print_stat_macro(&dl->decl);
+    }
+}
 
 
 static void
@@ -436,6 +499,30 @@ print_stat(declaration * dec)
 	s_print(name, "&objp->%s", dec->name);
     }
     print_ifstat(1, prefix, type, rel, amax, name, dec->name);
+}
+
+static void
+print_stat_macro(declaration * dec)
+{
+    char *prefix = dec->prefix;
+    char *type = dec->type;
+    char *amax = dec->array_max;
+    relation rel = dec->rel;
+    char name[256];
+
+    if (rel == REL_ARRAY && streq(type, "opaque")) {
+	error("Cannot define opaque array in shared_struct");
+    }
+
+    if (isvectordef(type, rel)) {
+	s_print(name, "(objp)->%s", dec->name);
+    } else {
+	s_print(name, "&(objp)->%s", dec->name);
+    }
+
+    f_print(fout, "\t(!");
+    print_xdrcall(prefix, type, rel, amax, name, dec->name);
+    f_print(fout, ") ? FALSE : \\\n");
 }
 
 static void
@@ -484,13 +571,15 @@ print_cout(declaration * dec)
 	f_print(fout, "{\n");
 	print_ifstat(1, dec->prefix, dec->type, dec->rel, dec->array_max,
 		     "objp", dec->name);
-	print_trailer();
+	print_trailer(NULL);
 
 	f_print(fout, "void\n");
 	f_print(fout, "xdrfree_%s(%s *objp)\n", dec->name, dec->name);
 	f_print(fout, "{\n");
 	f_print(fout, "\t(void)xdr_free((xdrproc_t) xdr_%s, objp);\n", dec->name);
 	f_print(fout, "}\n");
+
+	space();
     }
 }
 

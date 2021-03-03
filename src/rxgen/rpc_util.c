@@ -369,6 +369,7 @@ static token tokstrings[] = {
     {TOK_OUT, "OUT"},
     {TOK_INOUT, "INOUT"},
     {TOK_AFSUUID, "afsUUID"},
+    {TOK_SHARED_STRUCT, "shared_struct"},
     {TOK_EOF, "??????"}
 };
 

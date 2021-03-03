@@ -198,6 +198,10 @@ get_definition(void)
     case TOK_STARTINGOPCODE:
 	def_startingopcode(defp);
 	break;
+    case TOK_SHARED_STRUCT:
+	def_struct(defp);
+	defp->def_kind = DEF_SHARED_STRUCT;
+	break;
     case TOK_CUSTOMIZED:
 	get_token(&tok);
 	def_struct(defp);

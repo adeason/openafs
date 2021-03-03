@@ -71,6 +71,10 @@ print_datadef(definition * def)
     case DEF_STRUCT:
 	pstructdef(def);
 	break;
+    case DEF_SHARED_STRUCT:
+	pstructdef(def);
+	emit(def);
+	break;
     case DEF_UNION:
 	puniondef(def);
 	break;
@@ -89,13 +93,12 @@ print_datadef(definition * def)
     default:
 	break;
     }
-    if (def->def_kind != DEF_CONST && (!IsRxgenDefinition(def))) {
+    if (def->def_kind != DEF_SHARED_STRUCT && def->def_kind != DEF_CONST
+	 && (!IsRxgenDefinition(def))) {
 	f_print(fout, "bool_t xdr_%s(XDR *xdrs, %s *objp);\n", def->def_name,
 		def->def_name);
 	f_print(fout, "void xdrfree_%s(%s *objp);\n", def->def_name,
 		def->def_name);
-    }
-    if (def->def_kind != DEF_CONST && (!IsRxgenDefinition(def))) {
 	f_print(fout, "\n");
     }
     if (Sflag)

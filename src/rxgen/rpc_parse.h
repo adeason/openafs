@@ -51,6 +51,7 @@ enum defkind {
     DEF_UNION,
     DEF_ENUM,
     DEF_TYPEDEF,
+    DEF_SHARED_STRUCT,
 };
 typedef enum defkind defkind;
 
