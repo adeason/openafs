@@ -89,7 +89,7 @@ runtest(struct testinfo *test)
     fclose(fh);
     fh = NULL;
 
-    code = afstest_StartVLServer(dirname, &pid);
+    code = afstest_StartServer(&afstest_server_vl, dirname, &pid);
     if (code != 0) {
 	afs_com_err(argv0, code, "while starting vlserver");
 	goto done;

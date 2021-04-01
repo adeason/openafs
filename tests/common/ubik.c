@@ -197,6 +197,7 @@ find_dbdef(struct ubiktest_dataset *ds, char *use_db)
 void
 ubiktest_runtest(struct ubiktest_dataset *ds, struct ubiktest_ops *ops)
 {
+    struct afstest_server_type *server = ds->server_type;
     struct afsconf_dir *dir;
     int code = 0;
     pid_t pid = 0;
@@ -222,7 +223,7 @@ ubiktest_runtest(struct ubiktest_dataset *ds, struct ubiktest_ops *ops)
     dir = afsconf_Open(dirname);
     opr_Assert(dir != NULL);
 
-    db_path = afstest_asprintf("%s/vldb.DB0", dirname);
+    db_path = afstest_asprintf("%s/%s.DB0", dirname, server->db_name);
 
     /* Get the path to the sample db we're using. */
 
@@ -247,9 +248,9 @@ ubiktest_runtest(struct ubiktest_dataset *ds, struct ubiktest_ops *ops)
 	}
     }
 
-    code = afstest_StartVLServer(dirname, &pid);
+    code = afstest_StartServer(server, dirname, &pid);
     if (code != 0) {
-	afs_com_err(progname, code, "while starting vlserver");
+	afs_com_err(progname, code, "while starting server");
 	goto error;
     }
 
@@ -260,7 +261,7 @@ ubiktest_runtest(struct ubiktest_dataset *ds, struct ubiktest_ops *ops)
 	    goto error;
 	}
 
-	code = afstest_GetUbikClient(dir, AFSCONF_VLDBSERVICE, USER_SERVICE_ID,
+	code = afstest_GetUbikClient(dir, server->service_name, USER_SERVICE_ID,
 				     secClass, secIndex, ds->uclientp);
 	if (code != 0) {
 	    afs_com_err(progname, code, "while building ubik client");
@@ -291,9 +292,9 @@ ubiktest_runtest(struct ubiktest_dataset *ds, struct ubiktest_ops *ops)
 
     code = afstest_StopServer(pid);
     pid = 0;
-    is_int(0, code, "vlserver exited cleanly");
+    is_int(0, code, "server exited cleanly");
     if (code != 0) {
-	afs_com_err(progname, code, "while stopping vlserver");
+	afs_com_err(progname, code, "while stopping server");
 	goto error;
     }
 
@@ -324,7 +325,7 @@ ubiktest_runtest(struct ubiktest_dataset *ds, struct ubiktest_ops *ops)
     if (pid != 0) {
 	int stop_code = afstest_StopServer(pid);
 	if (stop_code != 0) {
-	    afs_com_err(progname, stop_code, "while stopping vlserver");
+	    afs_com_err(progname, stop_code, "while stopping server");
 	    if (code == 0) {
 		code = 1;
 	    }
