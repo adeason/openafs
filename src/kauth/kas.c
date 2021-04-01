@@ -66,6 +66,8 @@ main(int argc, char *argv[])
     }
 #endif
 
+    setprogname(argv[0]);
+
     /* Don't ka_Init if we're just returning help output. */
     if (argc== 0 ||
          ( strcmp(argv[1], "-help") != 0 &&

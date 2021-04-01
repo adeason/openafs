@@ -17,7 +17,7 @@
 static char *dirname;
 static char *db_path;
 static struct ubik_client *uclient;
-static char* argv0;
+static const char* argv0;
 
 static char uheader[64] =
 "\x00\x35\x45\x45\x00\x00\x00\x40" /* magic, pad1, size */
@@ -127,7 +127,9 @@ main(int argc, char **argv)
 
     plan(10);
 
-    argv0 = afstest_GetProgname(argv);
+    setprogname(argv[0]);
+    argv0 = getprogname();
+
     dirname = afstest_BuildTestConfig(NULL);
 
     code = rx_Init(0);

@@ -3646,6 +3646,8 @@ main(int argc, char **argv)
     sigaction(SIGSEGV, &nsa, NULL);
 #endif
 
+    setprogname(argv[0]);
+
     /* try to find volume location information */
     ts = cmd_CreateSyntax("getclientaddrs", GetClientAddrsCmd, NULL, 0,
 			  "get client network interface addresses");

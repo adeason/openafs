@@ -412,6 +412,8 @@ main(int argc, char **argv)
     logopts.lopt_dest = logDest_file;
     logopts.lopt_filename = AFSDIR_SERVER_BUDBLOG_FILEPATH;
 
+    setprogname(argv[0]);
+
     osi_audit_init();
 
     initialize_BUDB_error_table();
