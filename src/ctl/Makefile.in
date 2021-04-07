@@ -1,0 +1,41 @@
+srcdir=@srcdir@
+include @TOP_OBJDIR@/src/config/Makefile.config
+include @TOP_OBJDIR@/src/config/Makefile.pthread
+include @TOP_OBJDIR@/src/config/Makefile.libtool
+
+LT_objs = afsctl_int.xdr.lo ctl_client.lo ctl_common.lo ctl_server.lo ctl_xdr.lo
+LT_deps = $(top_builddir)/src/util/liboafs_util.la
+LT_libs = $(LIB_roken)
+
+HEADERS = $(TOP_INCDIR)/afs/afsctl.h \
+	  $(TOP_INCDIR)/afs/afsctl_int.h
+
+all: lib
+lib: $(HEADERS) liboafs_ctl.la
+
+$(LT_objs): $(HEADERS)
+
+liboafs_ctl.la: liboafs_ctl.la.sym $(LT_objs) $(LT_deps)
+	$(LT_LDLIB_shlib) $(LT_objs) $(LT_deps) $(LT_libs)
+
+$(TOP_INCDIR)/afs/afsctl.h: afsctl.h
+	$(INSTALL_DATA) $? $@
+
+$(TOP_INCDIR)/afs/afsctl_int.h: afsctl_int.h
+	$(INSTALL_DATA) $? $@
+
+afsctl_int.h: afsctl_int.xg
+	$(RXGEN) -A -b -h -o $@ $(srcdir)/afsctl_int.xg
+
+afsctl_int.xdr.c: afsctl_int.xg
+	$(RXGEN) -A -b -c -o $@ $(srcdir)/afsctl_int.xg
+
+generated: afsctl_int.h afsctl_int.xdr.c
+
+clean:
+	$(LT_CLEAN)
+	$(RM) -f *.o afsctl_int.h afsctl_int.xdr.c
+
+install: all
+
+dest: all

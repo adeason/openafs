@@ -1,0 +1,126 @@
+/*
+ * Copyright (c) 2021 Sine Nomine Associates. All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR `AS IS'' AND ANY EXPRESS OR
+ * IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+ * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+ * IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT,
+ * INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+ * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+ * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+const AFSCTL_PATH_MAX = 1024;
+
+const TESTCTL_OP_PREFIX = 0x007E0000;
+
+enum afsctl_req_op {
+    TESTCTL_OP_NOARG	= 0x007E0001,
+    TESTCTL_OP_ONLYIN	= 0x007E0002,
+    TESTCTL_OP_ONLYOUT	= 0x007E0003,
+    TESTCTL_OP_BOTHARG	= 0x007E0004,
+    TESTCTL_OP_FAIL	= 0x007E0005,
+    TESTCTL_OP_HANG	= 0x007E0006
+};
+
+struct testctl_inargs_hang {
+    afs_uint32 timeout_ms;
+    bool should_timeout;
+};
+
+union afsctl_req_inargs switch (afsctl_req_op op) {
+    case TESTCTL_OP_NOARG:
+	void;
+    case TESTCTL_OP_ONLYIN:
+	string testctl_onlyin<AFSCTL_PATH_MAX>;
+    case TESTCTL_OP_ONLYOUT:
+	void;
+    case TESTCTL_OP_BOTHARG:
+	string testctl_botharg<AFSCTL_PATH_MAX>;
+    case TESTCTL_OP_FAIL:
+	afs_int32 testctl_fail;
+    case TESTCTL_OP_HANG:
+	struct testctl_inargs_hang testctl_hang;
+};
+
+union afsctl_req_outargs switch (afsctl_req_op op) {
+    case TESTCTL_OP_ONLYOUT:
+	string testctl_onlyout<AFSCTL_PATH_MAX>;
+    case TESTCTL_OP_BOTHARG:
+	string testctl_botharg<AFSCTL_PATH_MAX>;
+
+    default:
+	void;
+};
+
+/*** afsctl packet types ***/
+
+const AFSCTL_MSG_MAX = 1024;
+struct afsctl_pkt_chello {
+    afs_uint32 server_type;
+    string message<AFSCTL_MSG_MAX>;
+    struct afsctl_req_inargs in_args;
+};
+
+enum afsctl_pkt_type {
+    AFSCTL_PKT_ABORT	= 0x00430001,
+    AFSCTL_PKT_SHELLO	= 0x00430002,
+    AFSCTL_PKT_CHELLO	= 0x00430003,
+    AFSCTL_PKT_SBYE	= 0x00430004,
+
+    TESTCTL_PKT_HANG	= 0x005E0001
+};
+
+/*
+ * AFSCTL_SHELLO_VERSION is an arbitrary version string that must match between
+ * the afsctl server and client. Any time something changes in this file that
+ * affects compatibility, this constant should change, to prevent a mismatched
+ * client and server from talking to each other (and possibily misinterpreting
+ * a structure, or only working with some calls because some opcodes aren't
+ * implemented, etc).
+ *
+ * The actual value in here is arbitrary, and could possibly even be randomly
+ * generated. Currently the convention is to base it on the openafs
+ * version/commit around when it was last changed. We don't autogenerate it
+ * based on the actual version during the build, so we only actually break
+ * compat when something in here changes. It doesn't need to actually match the
+ * commit or version that changes this file; we just need to guarantee
+ * uniqueness. We don't use a simple counter, to help avoid possible collisions
+ * where history may be nonlinear (e.g. changes get picked from different
+ * release branches, site-local changes, etc).
+ *
+ * If changing this is too heavy of a hammer, it's also possible to just change
+ * opcodes or opcode prefixes, if a change is restricted to just those opcodes.
+ * But it's simpler to just change this version constant; keeping compatibility
+ * across versions shouldn't be a big concern.
+ */
+%#define AFSCTL_SHELLO_VERSION "openafs 1.9.1-75-If420701f"
+
+union afsctl_pkt switch (afsctl_pkt_type ptype) {
+    case AFSCTL_PKT_ABORT:
+	afs_int32 abort_code;
+
+    case AFSCTL_PKT_SHELLO:
+	string shello_version<AFSCTL_MSG_MAX>;
+
+    case AFSCTL_PKT_CHELLO:
+	struct afsctl_pkt_chello chello;
+
+    case AFSCTL_PKT_SBYE:
+	struct afsctl_req_outargs out_args;
+
+    case TESTCTL_PKT_HANG:
+	string testctl_hang<AFSCTL_PATH_MAX>;
+};
