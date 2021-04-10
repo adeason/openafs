@@ -306,6 +306,7 @@ extern int uphys_buf_append(struct ubik_dbase *adbase, afs_int32 afid,
 int uphys_stat_path(char *path, struct ubik_stat *astat);
 int uphys_getlabel_path(char *path, struct ubik_version *aversion);
 int uphys_setlabel_path(char *path, struct ubik_version *aversion);
+int uphys_copydb(char *src_path, char *dest_path);
 int uphys_recvdb(struct rx_call *rxcall, char *path,
 		 struct ubik_version *version, afs_int64 length);
 int uphys_senddb(char *path, struct rx_call *rxcall,
@@ -456,10 +457,45 @@ extern int uvote_HaveSyncAndVersion(struct ubik_version);
 
 /* udb.c */
 
+void udb_v32to64(struct ubik_version *from, struct ubik_version64 *to);
+int udb_vcmp64(struct ubik_version64 *vers_a,
+	       struct ubik_version64 *vers_b);
 int udb_path(struct ubik_dbase *dbase, char *suffix, char **apath);
+int udb_delpath(char *path);
 int udb_del_suffixes(struct ubik_dbase *dbase, char *suffix_new,
 		     char *suffix_spare);
 int udb_install(struct ubik_dbase *dbase, char *suffix_new,
 		struct ubik_version *new_vers);
+
+/* freeze_server.c */
+
+void ufreeze_Init(struct ubik_serverinit_opts *opts);
+
+/* freeze_client.c */
+
+struct ubik_freeze_client;
+struct ubik_freezeinit_opts {
+    struct afsctl_clientinfo *fi_cinfo;
+
+    int fi_nonest;
+    int fi_needsync;
+
+    afs_uint32 fi_timeout_ms;
+};
+
+int ubik_FreezeInit(struct ubik_freezeinit_opts *opts,
+		    struct ubik_freeze_client **a_freeze);
+int ubik_FreezeIsNested(struct ubik_freeze_client *freeze,
+			afs_uint64 *a_freezeid);
+int ubik_FreezeSetEnv(struct ubik_freeze_client *freeze);
+void ubik_FreezePrintEnv(struct ubik_freeze_client *freeze, FILE *fh);
+void ubik_FreezeDestroy(struct ubik_freeze_client **a_freeze);
+int ubik_FreezeBegin(struct ubik_freeze_client *freeze, afs_uint64 *a_freezeid,
+		     struct ubik_version64 *a_version, char **a_dbpath);
+int ubik_FreezeAbort(struct ubik_freeze_client *freeze, char *message);
+int ubik_FreezeEnd(struct ubik_freeze_client *freeze, char *message);
+int ubik_FreezeAbortId(struct ubik_freeze_client *freeze, afs_uint64 freezeid,
+		       char *message);
+int ubik_FreezeAbortForce(struct ubik_freeze_client *freeze, char *message);
 
 #endif /* OPENAFS_UBIK_INTERNAL_H */

@@ -25,10 +25,16 @@
 const AFSCTL_PATH_MAX = 1024;
 
 const UBIKCTL_OP_PREFIX = 0x75000000;
+const UFRZCTL_OP_PREFIX = 0x75660000;
 const TESTCTL_OP_PREFIX = 0x007E0000;
+
+%#include <ubik_int.h>
 
 enum afsctl_req_op {
     UBIKCTL_OP_DBINFO	= 0x75000001,
+
+    UFRZCTL_OP_FREEZEDB	= 0x75660001,
+    UFRZCTL_OP_END	= 0x75660002,
 
     TESTCTL_OP_NOARG	= 0x007E0001,
     TESTCTL_OP_ONLYIN	= 0x007E0002,
@@ -36,6 +42,20 @@ enum afsctl_req_op {
     TESTCTL_OP_BOTHARG	= 0x007E0004,
     TESTCTL_OP_FAIL	= 0x007E0005,
     TESTCTL_OP_HANG	= 0x007E0006
+};
+
+/*** ufrzctl op args ***/
+
+struct ufrzctl_inargs_freezedb {
+    bool need_sync;
+    bool no_timeout;
+    afs_uint32 timeout_ms;
+};
+
+struct ufrzctl_inargs_end {
+    afs_uint64 freezeid;
+    bool abort;
+    bool force_abort;
 };
 
 struct testctl_inargs_hang {
@@ -46,6 +66,11 @@ struct testctl_inargs_hang {
 union afsctl_req_inargs switch (afsctl_req_op op) {
     case UBIKCTL_OP_DBINFO:
 	void;
+
+    case UFRZCTL_OP_FREEZEDB:
+	struct ufrzctl_inargs_freezedb ufrz_freezedb;
+    case UFRZCTL_OP_END:
+	struct ufrzctl_inargs_end ufrz_end;
 
     case TESTCTL_OP_NOARG:
 	void;
@@ -85,6 +110,12 @@ struct ubikctl_dbinfo {
     string val<AFSCTL_MSG_MAX>;
 };
 
+struct ufrzctl_pkt_frzinfo {
+    afs_uint64 freezeid;
+    struct ubik_version64 db_version;
+    string db_path<AFSCTL_PATH_MAX>;
+};
+
 enum afsctl_pkt_type {
     AFSCTL_PKT_ABORT	= 0x00430001,
     AFSCTL_PKT_SHELLO	= 0x00430002,
@@ -92,6 +123,8 @@ enum afsctl_pkt_type {
     AFSCTL_PKT_SBYE	= 0x00430004,
 
     UBIKCTL_PKT_DBINFO	= 0x55000001,
+
+    UFRZCTL_PKT_FRZINFO	= 0x55460001,
 
     TESTCTL_PKT_HANG	= 0x005E0001
 };
@@ -136,6 +169,9 @@ union afsctl_pkt switch (afsctl_pkt_type ptype) {
 
     case UBIKCTL_PKT_DBINFO:
 	struct ubikctl_dbinfo *ubikctl_dbinfo;
+
+    case UFRZCTL_PKT_FRZINFO:
+	struct ufrzctl_pkt_frzinfo ufrz_frzinfo;
 
     case TESTCTL_PKT_HANG:
 	string testctl_hang<AFSCTL_PATH_MAX>;

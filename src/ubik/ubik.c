@@ -619,6 +619,7 @@ ubik_ServerInitByOpts(struct ubik_serverinit_opts *opts,
 #ifdef AFS_PTHREAD_ENV
     uctl_Init(opts);
 #endif
+    ufreeze_Init(opts);
 
     return 0;
 }
