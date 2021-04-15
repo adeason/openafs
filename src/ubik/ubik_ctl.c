@@ -38,6 +38,7 @@ struct ubikctl {
 
     struct afsctl_clientinfo cinfo;
     int quiet;
+    struct opr_progress_opts progopts;
 
     struct ubik_freeze_client *freeze;
     struct ubik_version64 frozen_vers;
@@ -45,13 +46,28 @@ struct ubikctl {
 		     *   server gave us. */
 
     char *out_path; /**< When dumping the db, the path to dump to. */
+    char *in_path;  /**< When installing/restoring a db, the path to read from */
+
+    char *backup_suffix;
+		    /**< When installing a db, backup the existing db to this
+		     *   suffix (or NULL to not backup the db) */
+    int no_dist;    /**< When installing a db, don't distribute the db to other
+		     *   sites */
+    int need_dist;  /**< When installing a db, it's an error if we fail to
+		     *   distribute the db to other sites */
 };
 
 enum {
     OPT_output,
     OPT_require_sync,
 
+    OPT_input,
+    OPT_backup_suffix,
+    OPT_no_backup,
+    OPT_dist,
+
     OPT_cmd,
+    OPT_rw,
 
     OPT_freezeid,
     OPT_force,
@@ -60,6 +76,8 @@ enum {
     OPT_reason,
     OPT_ctl_socket,
     OPT_quiet,
+    OPT_progress,
+    OPT_no_progress,
 };
 
 static int preamble(struct ubikctl *uctl, struct cmd_syndesc *as);
@@ -256,6 +274,146 @@ DumpCmd(struct cmd_syndesc *as, void *rock)
 }
 
 static int
+do_install(struct ubikctl *uctl, struct cmd_syndesc *as, int restore)
+{
+    int code;
+    char *db_path_free = NULL;
+    char *db_path;
+
+    code = preamble(uctl, as);
+    if (code != 0) {
+	goto error;
+    }
+
+    opr_Assert(uctl->freeze != NULL);
+
+    if (restore) {
+	print_nq(uctl, "Making copy of %s... ", uctl->in_path);
+
+	if (asprintf(&db_path_free, "%s.TMP", uctl->db_path) < 0) {
+	    code = errno;
+	    print_error(code, "Failed to construct db path");
+	    goto error;
+	}
+
+	db_path = db_path_free;
+	code = udb_delpath(db_path);
+	if (code != 0) {
+	    print_error(code, "Failed to delete tmp path %s", db_path);
+	    goto error;
+	}
+
+	code = uphys_copydb(uctl->in_path, db_path);
+	if (code != 0) {
+	    print_error(code, "Failed to copy db to %s", db_path);
+	    goto error;
+	}
+
+	print_nq(uctl, "done.\n");
+
+    } else {
+	db_path = uctl->in_path;
+    }
+
+    print_nq(uctl, "Installing db %s... ", db_path);
+
+    code = ubik_FreezeInstall(uctl->freeze, db_path, uctl->backup_suffix);
+    if (code != 0) {
+	print_error(code, "Failed to install db");
+	goto error;
+    }
+
+    print_nq(uctl, "done.\n");
+
+    if (!uctl->no_dist) {
+	struct opr_progress_opts progopts = uctl->progopts;
+	struct opr_progress *progress;
+	progopts.bkg_spinner = 1;
+
+	progress = opr_progress_start(&progopts, "Distributing db");
+	code = ubik_FreezeDistribute(uctl->freeze);
+	opr_progress_done(&progress, code);
+
+	if (code != 0) {
+	    print_error(code, "Failed to distribute db");
+	    if (uctl->need_dist) {
+		goto error;
+	    }
+
+	    fprintf(stderr, "warning: We failed to distribute the new database "
+		    "to other ubik sites, but the\n");
+	    fprintf(stderr, "warning: database was installed successfully. Ubik "
+		    "itself may distribute the db\n");
+	    fprintf(stderr, "warning: on its own in the background.\n");
+	    fprintf(stderr, "\n");
+	}
+    }
+
+    code = end_freeze(uctl);
+    if (code != 0) {
+	goto error;
+    }
+
+ done:
+    free(db_path_free);
+    return code;
+
+ error:
+    code = -1;
+    goto done;
+}
+
+static int
+RestoreCmd(struct cmd_syndesc *as, void *rock)
+{
+    struct ubikctl *uctl = rock;
+    int code;
+
+    code = do_install(uctl, as, 1);
+    if (code != 0) {
+	goto done;
+    }
+
+    print_nq(uctl, "\n");
+    print_nq(uctl, "Restored ubik database from %s\n", uctl->in_path);
+    if (uctl->backup_suffix != NULL) {
+	print_nq(uctl, "Existing database backed up to suffix %s\n",
+		 uctl->backup_suffix);
+    }
+
+    code = 0;
+
+ done:
+    postamble(&uctl);
+    return code;
+}
+
+static int
+InstallCmd(struct cmd_syndesc *as, void *rock)
+{
+    struct ubikctl *uctl = rock;
+    int code;
+
+    code = do_install(uctl, as, 0);
+    if (code != 0) {
+	goto done;
+    }
+
+    print_nq(uctl, "\n");
+    print_nq(uctl, "Installed ubik database %s\n", uctl->in_path);
+    if (uctl->backup_suffix != NULL) {
+	print_nq(uctl, "Existing database backed up to suffix %s\n",
+		 uctl->backup_suffix);
+    }
+
+    code = 0;
+
+ done:
+    postamble(&uctl);
+    return code;
+}
+
+static int
 FreezeRunCmd(struct cmd_syndesc *as, void *rock)
 {
     static struct cmd_item default_cmd = {
@@ -368,6 +526,38 @@ FreezeRunCmd(struct cmd_syndesc *as, void *rock)
 }
 
 static int
+FreezeDistCmd(struct cmd_syndesc *as, void *rock)
+{
+    struct ubikctl *uctl = rock;
+    int code;
+
+    code = preamble(uctl, as);
+    if (code != 0) {
+	goto error;
+    }
+
+    print_nq(uctl, "Distributing restored database (may take a while)... ");
+
+    code = ubik_FreezeDistribute(uctl->freeze);
+    if (code != 0) {
+	print_error(code, "Failed to distribute db");
+	goto error;
+    }
+
+    print_nq(uctl, "done.\n");
+
+    code = 0;
+
+ done:
+    postamble(&uctl);
+    return code;
+
+ error:
+    code = -1;
+    goto done;
+}
+
+static int
 FreezeAbortCmd(struct cmd_syndesc *as, void *rock)
 {
     struct ubikctl *uctl = rock;
@@ -433,6 +623,8 @@ static int
 creates_freeze(struct cmd_syndesc *as)
 {
     if (as->proc == DumpCmd ||
+	as->proc == RestoreCmd ||
+	as->proc == InstallCmd ||
 	as->proc == FreezeRunCmd) {
 	return 1;
     }
@@ -445,6 +637,7 @@ static int
 freeze_cmd(struct cmd_syndesc *as)
 {
     if (creates_freeze(as) ||
+	as->proc == FreezeDistCmd ||
 	as->proc == FreezeAbortCmd) {
 	return 1;
     }
@@ -472,8 +665,15 @@ preamble_freeze(struct ubikctl *uctl, struct cmd_syndesc *as)
     if (as->proc == DumpCmd || as->proc == FreezeRunCmd) {
 	cmd_OptionAsFlag(as, OPT_require_sync, &fopts.fi_needsync);
     }
+    if (as->proc == RestoreCmd || as->proc == InstallCmd) {
+	fopts.fi_needrw = 1;
+    }
     if (as->proc == FreezeRunCmd) {
+	cmd_OptionAsFlag(as, OPT_rw, &fopts.fi_needrw);
 	fopts.fi_nonest = 1;
+    }
+    if (as->proc == FreezeDistCmd) {
+	fopts.fi_forcenest = 1;
     }
 
     if (creates_freeze(as)) {
@@ -511,12 +711,17 @@ static int
 preamble(struct ubikctl *uctl, struct cmd_syndesc *as)
 {
     int code;
+    char *dist = NULL;
 
     cmd_OptionAsString(as, OPT_reason, &uctl->cinfo.message);
     cmd_OptionAsString(as, OPT_ctl_socket, &uctl->cinfo.sock_path);
 
     if (can_quiet(as)) {
 	cmd_OptionAsFlag(as, OPT_quiet, &uctl->quiet);
+	cmd_OptionAsFlag(as, OPT_progress, &uctl->progopts.force_enable);
+	cmd_OptionAsFlag(as, OPT_no_progress, &uctl->progopts.force_disable);
+
+	uctl->progopts.quiet = uctl->quiet;
     }
 
     if (as->proc == DumpCmd) {
@@ -537,6 +742,46 @@ preamble(struct ubikctl *uctl, struct cmd_syndesc *as)
 	}
     }
 
+    if (as->proc == RestoreCmd || as->proc == InstallCmd) {
+	struct ubik_version in_vers;
+	int no_backup = 0;
+
+	cmd_OptionAsString(as, OPT_input, &uctl->in_path);
+	opr_Assert(uctl->in_path != NULL);
+
+	cmd_OptionAsString(as, OPT_backup_suffix, &uctl->backup_suffix);
+	cmd_OptionAsFlag(as, OPT_no_backup, &no_backup);
+	cmd_OptionAsString(as, OPT_dist, &dist);
+
+	if (uctl->backup_suffix == NULL && !no_backup) {
+	    print_error(0, "You must specify either -backup-suffix or "
+			"-no-backup");
+	    goto error;
+	}
+	if (no_backup) {
+	    free(uctl->backup_suffix);
+	    uctl->backup_suffix = NULL;
+	}
+
+	if (dist == NULL || strcmp(dist, "try") == 0) {
+	    /* noop; this is the default */
+	} else if (strcmp(dist, "skip") == 0) {
+	    uctl->no_dist = 1;
+	} else if (strcmp(dist, "required") == 0) {
+	    uctl->need_dist = 1;
+	} else {
+	    print_error(0, "Bad value for -dist: %s", dist);
+	    goto error;
+	}
+
+	/* Check that we can open the input db. */
+	code = uphys_getlabel_path(uctl->in_path, &in_vers);
+	if (code != 0) {
+	    print_error(code, "Failed to get version of %s", uctl->in_path);
+	    goto error;
+	}
+    }
+
     if (freeze_cmd(as)) {
 	code = preamble_freeze(uctl, as);
 	if (code != 0) {
@@ -544,10 +789,30 @@ preamble(struct ubikctl *uctl, struct cmd_syndesc *as)
 	}
     }
 
-    return 0;
+    code = 0;
+
+ done:
+    free(dist);
+    return code;
 
  error:
-    return -1;
+    code = -1;
+    goto done;
+}
+
+static void
+install_opts(struct cmd_syndesc *as)
+{
+    cmd_AddParmAtOffset(as, OPT_input, "-input", CMD_SINGLE, CMD_REQUIRED,
+			"input db path");
+    cmd_AddParmAtOffset(as, OPT_backup_suffix, "-backup-suffix", CMD_SINGLE,
+			CMD_OPTIONAL,
+			"backup db suffix");
+    cmd_AddParmAtOffset(as, OPT_no_backup, "-no-backup", CMD_FLAG,
+			CMD_OPTIONAL,
+			"do not generate db backup");
+    cmd_AddParmAtOffset(as, OPT_dist, "-dist", CMD_SINGLE, CMD_OPTIONAL,
+			"try | skip | required");
 }
 
 static void
@@ -561,6 +826,12 @@ common_opts(struct cmd_syndesc *as)
     if (can_quiet(as)) {
 	cmd_AddParmAtOffset(as, OPT_quiet, "-quiet", CMD_FLAG, CMD_OPTIONAL,
 			    "talk less");
+	cmd_AddParmAtOffset(as, OPT_progress, "-progress", CMD_FLAG,
+			    CMD_OPTIONAL,
+			    "Enable progress reporting");
+	cmd_AddParmAtOffset(as, OPT_no_progress, "-no-progress", CMD_FLAG,
+			    CMD_OPTIONAL,
+			    "Disable progress reporting");
     }
 
     cmd_AddParmAtOffset(as, OPT_reason, "-reason", CMD_SINGLE, CMD_OPTIONAL,
@@ -632,14 +903,35 @@ ubikctl_CreateSyntax(struct ubikctl_info *info)
 			"fail if using non-sync-site");
     common_opts(ts);
 
+    ts = cmd_CreateSyntax(do_snprintf(&name, "%sdb-restore", prefix),
+			  RestoreCmd, uctl, 0,
+			  do_snprintf(&descr, "restore %s", db));
+    install_opts(ts);
+    common_opts(ts);
+
+    ts = cmd_CreateSyntax(do_snprintf(&name, "%sdb-install", prefix),
+			  InstallCmd, uctl, 0,
+			  do_snprintf(&descr, "install %s", db));
+    install_opts(ts);
+    common_opts(ts);
+
     ts = cmd_CreateSyntax(do_snprintf(&name, "%sdb-freeze-run", prefix),
 			  FreezeRunCmd, uctl, 0,
 			  do_snprintf(&descr, "freeze %s during command", db));
     cmd_AddParmAtOffset(ts, OPT_cmd, "-cmd", CMD_LIST, CMD_OPTIONAL,
 			"command (and args) to run during freeze");
+    cmd_AddParmAtOffset(ts, OPT_rw, "-rw", CMD_FLAG, CMD_OPTIONAL,
+			"allow database to be modified during freeze");
     cmd_AddParmAtOffset(ts, OPT_require_sync, "-require-sync", CMD_FLAG,
 			CMD_OPTIONAL,
 			"fail if using non-sync-site");
+    common_opts(ts);
+
+    ts = cmd_CreateSyntax(do_snprintf(&name, "%sdb-freeze-dist", prefix),
+			  FreezeDistCmd, uctl, 0,
+			  do_snprintf(&descr,
+				      "distribute installed %s during a freeze",
+				      db));
     common_opts(ts);
 
     ts = cmd_CreateSyntax(do_snprintf(&name, "%sdb-freeze-abort", prefix),

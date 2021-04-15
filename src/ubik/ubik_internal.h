@@ -387,7 +387,7 @@ int urecovery_send_db(struct ubik_dbase *dbase,
 		      struct ubik_version *version)
 		      AFS_NONNULL((1,2,3));
 
-int urecovery_distribute_db(struct ubik_dbase *dbase);
+int urecovery_distribute_db(struct ubik_dbase *dbase, int *a_nsent);
 /*\}*/
 
 /*! \name ubik.c */
@@ -465,7 +465,7 @@ int udb_delpath(char *path);
 int udb_del_suffixes(struct ubik_dbase *dbase, char *suffix_new,
 		     char *suffix_spare);
 int udb_install(struct ubik_dbase *dbase, char *suffix_new,
-		struct ubik_version *new_vers);
+		char *suffix_old, struct ubik_version *new_vers);
 
 /* freeze_server.c */
 
@@ -477,8 +477,10 @@ struct ubik_freeze_client;
 struct ubik_freezeinit_opts {
     struct afsctl_clientinfo *fi_cinfo;
 
+    int fi_forcenest;
     int fi_nonest;
     int fi_needsync;
+    int fi_needrw;
 
     afs_uint32 fi_timeout_ms;
 };
@@ -497,5 +499,8 @@ int ubik_FreezeEnd(struct ubik_freeze_client *freeze, char *message);
 int ubik_FreezeAbortId(struct ubik_freeze_client *freeze, afs_uint64 freezeid,
 		       char *message);
 int ubik_FreezeAbortForce(struct ubik_freeze_client *freeze, char *message);
+int ubik_FreezeInstall(struct ubik_freeze_client *freeze, char *path,
+		       char *backup_suffix);
+int ubik_FreezeDistribute(struct ubik_freeze_client *freeze);
 
 #endif /* OPENAFS_UBIK_INTERNAL_H */

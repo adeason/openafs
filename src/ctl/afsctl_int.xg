@@ -35,6 +35,8 @@ enum afsctl_req_op {
 
     UFRZCTL_OP_FREEZEDB	= 0x75660001,
     UFRZCTL_OP_END	= 0x75660002,
+    UFRZCTL_OP_INSTALL	= 0x75660003,
+    UFRZCTL_OP_DIST	= 0x75660004,
 
     TESTCTL_OP_NOARG	= 0x007E0001,
     TESTCTL_OP_ONLYIN	= 0x007E0002,
@@ -50,12 +52,22 @@ struct ufrzctl_inargs_freezedb {
     bool need_sync;
     bool no_timeout;
     afs_uint32 timeout_ms;
+    bool readonly;
+    bool readwrite;
 };
 
 struct ufrzctl_inargs_end {
     afs_uint64 freezeid;
     bool abort;
     bool force_abort;
+};
+
+struct ufrzctl_inargs_install {
+    afs_uint64 freezeid;
+    struct ubik_version64 old_version;
+    struct ubik_version64 new_version;
+    string new_suffix<AFSCTL_PATH_MAX>;
+    string backup_suffix<AFSCTL_PATH_MAX>;
 };
 
 struct testctl_inargs_hang {
@@ -71,6 +83,10 @@ union afsctl_req_inargs switch (afsctl_req_op op) {
 	struct ufrzctl_inargs_freezedb ufrz_freezedb;
     case UFRZCTL_OP_END:
 	struct ufrzctl_inargs_end ufrz_end;
+    case UFRZCTL_OP_INSTALL:
+	struct ufrzctl_inargs_install ufrz_inst;
+    case UFRZCTL_OP_DIST:
+	afs_uint64 ufrz_dist_freezeid;
 
     case TESTCTL_OP_NOARG:
 	void;
@@ -152,7 +168,7 @@ enum afsctl_pkt_type {
  * But it's simpler to just change this version constant; keeping compatibility
  * across versions shouldn't be a big concern.
  */
-%#define AFSCTL_SHELLO_VERSION "openafs 1.9.1-75-If420701f"
+%#define AFSCTL_SHELLO_VERSION "openafs 1.9.1-79-I436e9c2c"
 
 union afsctl_pkt switch (afsctl_pkt_type ptype) {
     case AFSCTL_PKT_ABORT:
