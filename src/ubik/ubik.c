@@ -16,6 +16,7 @@
 #include <rx/rx.h>
 #include <afs/cellconfig.h>
 #include <afs/afsutil.h>
+#include <afs/okv.h>
 #ifdef AFS_PTHREAD_ENV
 # include <afs/afsctl.h>
 #endif
@@ -357,9 +358,13 @@ uctl_dbinfo(struct afsctl_call *ctl)
     struct ubik_dbase *dbase = ubik_dbase;
     char *dbtype = "flat";
     char *engine = "udisk";
+    char *engine_free = NULL;
     char *vers_str = NULL;
     char *size_str = NULL;
     char *path = NULL;
+    char *kv_name = NULL;
+    char *kv_descr = NULL;
+    afs_int64 size_val;
     struct ubik_version version;
     struct ubik_stat ustat;
     int code;
@@ -369,7 +374,7 @@ uctl_dbinfo(struct afsctl_call *ctl)
 
     DBHOLD(dbase);
 
-    code = uphys_getlabel(dbase, 0, &version);
+    code = udb_getlabel_db(dbase, &version);
     if (code != 0) {
 	ViceLog(0, ("ubik: Error %d getting db label\n", code));
 	goto done_locked;
@@ -380,15 +385,33 @@ uctl_dbinfo(struct afsctl_call *ctl)
 	goto done_locked;
     }
 
-    code = uphys_stat_path(path, &ustat);
+    code = udb_stat(path, &ustat);
     if (code != 0) {
 	ViceLog(0, ("ubik: Error %d stating db\n", code));
 	goto done_locked;
     }
 
+    if (ustat.kv) {
+	dbtype = "kv";
+	kv_name = okv_dbhandle_engine(dbase->kv_dbh);
+	kv_descr = okv_dbhandle_descr(dbase->kv_dbh);
+    }
+
     DBRELE(dbase);
 
-    if (asprintf(&size_str, "%d", ustat.size) < 0) {
+    if (ustat.kv) {
+	size_val = ustat.n_items;
+	if (asprintf(&engine_free, "%s (%s)", kv_name, kv_descr) < 0) {
+	    engine_free = NULL;
+	    goto enomem;
+	}
+	engine = engine_free;
+
+    } else {
+	size_val = ustat.size;
+    }
+
+    if (asprintf(&size_str, "%lld", size_val) < 0) {
 	size_str = NULL;
 	goto enomem;
     }
@@ -408,6 +431,7 @@ uctl_dbinfo(struct afsctl_call *ctl)
     free(vers_str);
     free(size_str);
     free(path);
+    free(engine_free);
     return code;
 
  enomem:
@@ -501,6 +525,11 @@ ubik_ServerInitByOpts(struct ubik_serverinit_opts *opts,
 
     tdb = calloc(1, sizeof(*tdb));
     tdb->pathName = strdup(opts->pathName);
+    {
+	char *base = strdup(tdb->pathName);
+	tdb->pathBase = strdup(basename(base));
+	free(base);
+    }
     tdb->dbcheck_func = opts->dbcheck_func;
     init_locks(tdb);
 #ifdef AFS_PTHREAD_ENV
@@ -522,6 +551,10 @@ ubik_ServerInitByOpts(struct ubik_serverinit_opts *opts,
 	return code;
 
     ubik_callPortal = opts->myPort;
+
+    code = ukv_init(tdb, opts->default_kv);
+    if (code)
+	return code;
 
     udisk_Init(ubik_nBuffers);
     ulock_Init();
@@ -682,6 +715,16 @@ BeginTransRaw(struct ubik_dbase *dbase, afs_int32 transMode,
     trans->dbase = dbase;
     trans->type = transMode;
     trans->flags |= TRRAW;
+    if (ubik_KVDbase(dbase)) {
+	int code;
+	trans->flags |= TRKEYVAL;
+	trans->kv_dbh = okv_dbhandle_ref(dbase->kv_dbh);
+	code = ukv_begin(trans, &trans->kv_tx);
+	if (code != 0) {
+	    ubik_AbortTrans(trans);
+	    return code;
+	}
+    }
 
     *transPtr = trans;
     return 0;
@@ -837,6 +880,8 @@ ubik_AbortTrans(struct ubik_trans *transPtr)
     struct ubik_dbase *dbase;
 
     if (ubik_RawTrans(transPtr)) {
+	okv_abort(&transPtr->kv_tx);
+	okv_dbhandle_rele(&transPtr->kv_dbh);
 	free(transPtr);
 	return 0;
     }
@@ -926,6 +971,13 @@ EndTransRaw(struct ubik_trans *transPtr)
 	goto error;
     }
 
+    /*
+     * Note that for a KV trans, we don't ukv_commit with a specific version,
+     * since we don't set the version for a flatfile raw commit either. We
+     * depend on callers setting an explicit version before committing.
+     */
+    okv_commit(&transPtr->kv_tx);
+    okv_dbhandle_rele(&transPtr->kv_dbh);
     free(transPtr);
     return 0;
 
@@ -1210,7 +1262,7 @@ ubik_Flush(struct ubik_trans *transPtr)
     if (transPtr->type != UBIK_WRITETRANS)
 	return UBADTYPE;
 
-    if (ubik_RawTrans(transPtr)) {
+    if (ubik_RawTrans(transPtr) || ubik_KVTrans(transPtr)) {
 	return 0;
     }
 
@@ -1594,7 +1646,7 @@ ubik_SetServerSecurityProcs(void (*buildproc) (void *,
  * _not_ transactional. That is, data is written immediately to disk with
  * ubik_Write, and ubik_AbortTrans will not rollback anything.
  *
- * @param[in] path  Path to the database .DB0 file
+ * @param[in] path  Path to the database .DB0 file/dir.
  * @param[in] ropts Optional; specifies various options. See ubik_rawinit_opts
  *                  for details.
  * @param[out] dbase    The raw database handle.
@@ -1609,7 +1661,6 @@ ubik_RawInit(char *path, struct ubik_rawinit_opts *ropts,
 
     struct ubik_dbase *tdb;
     int code;
-    char *mode;
 
     if (ropts == NULL) {
 	ropts = &ropt_defaults;
@@ -1623,23 +1674,51 @@ ubik_RawInit(char *path, struct ubik_rawinit_opts *ropts,
 
     init_locks(tdb);
 
-    if (ropts->r_create) {
+    if (ropts->r_create_kv || ropts->r_create_flat) {
 	if (!tdb->raw_rw) {
 	    code = UBADTYPE;
 	    goto done;
 	}
-	mode = "w+bx";
-
-    } else if (tdb->raw_rw) {
-	mode = "r+b";
-    } else {
-	mode = "rb";
     }
 
-    tdb->raw_fh = fopen(path, mode);
-    if (tdb->raw_fh == NULL) {
-	code = errno;
-	goto done;
+    if (ropts->r_create_kv) {
+	code = ukv_create(path, NULL, &tdb->kv_dbh);
+	if (code != 0) {
+	    goto done;
+	}
+
+    } else if (ropts->r_create_flat) {
+	tdb->raw_fh = fopen(path, "w+bx");
+	if (tdb->raw_fh == NULL) {
+	    code = errno;
+	    goto done;
+	}
+
+    } else {
+	int isdir = 0;
+
+	code = udb_dbinfo(path, NULL, &isdir, NULL);
+	if (code != 0) {
+	    goto done;
+	}
+
+	if (isdir) {
+	    code = ukv_open(path, &tdb->kv_dbh, NULL);
+	    if (code != 0) {
+		goto done;
+	    }
+
+	} else {
+	    if (tdb->raw_rw) {
+		tdb->raw_fh = fopen(path, "r+b");
+	    } else {
+		tdb->raw_fh = fopen(path, "rb");
+	    }
+	    if (tdb->raw_fh == NULL) {
+		code = errno;
+		goto done;
+	    }
+	}
     }
 
     *dbase = tdb;
@@ -1674,6 +1753,7 @@ ubik_RawClose(struct ubik_dbase **a_dbase)
 	fclose(dbase->raw_fh);
 	dbase->raw_fh = NULL;
     }
+    okv_close(&dbase->kv_dbh);
 
 #ifdef AFS_PTHREAD_ENV
     opr_mutex_destroy(&dbase->versionLock);
@@ -1704,13 +1784,35 @@ ubik_RawTrans(struct ubik_trans *transPtr)
 }
 
 int
-ubik_RawHandle(struct ubik_trans *trans, FILE **a_fh)
+ubik_RawHandle(struct ubik_trans *trans, FILE **a_fh,
+	       struct okv_trans **a_kvtx)
 {
     if (!ubik_RawTrans(trans)) {
 	return UBADTYPE;
     }
-    opr_Assert(trans->dbase->raw_fh != NULL);
-    *a_fh = trans->dbase->raw_fh;
+    if (a_fh != NULL) {
+	*a_fh = NULL;
+    }
+    if (a_kvtx != NULL) {
+	*a_kvtx = NULL;
+    }
+
+    if (trans->dbase->raw_fh != NULL) {
+	if (a_fh == NULL) {
+	    return UBADTYPE;
+	}
+	*a_fh = trans->dbase->raw_fh;
+	return 0;
+    }
+
+    if (trans->kv_tx != NULL) {
+	if (a_kvtx == NULL) {
+	    return UBADTYPE;
+	}
+	*a_kvtx = trans->kv_tx;
+	return 0;
+    }
+
     return 0;
 }
 
@@ -1722,7 +1824,7 @@ ubik_RawGetHeader(struct ubik_trans *trans, struct ubik_hdr *a_hdr)
 
     memset(&hdr, 0, sizeof(hdr));
 
-    if (!ubik_RawTrans(trans)) {
+    if (!ubik_RawTrans(trans) || ubik_KVTrans(trans)) {
 	return UBADTYPE;
     }
 
@@ -1751,6 +1853,10 @@ ubik_RawGetVersion(struct ubik_trans *trans, struct ubik_version *version)
 	return UBADTYPE;
     }
 
+    if (ubik_KVTrans(trans)) {
+	return ukv_getlabel(trans->kv_tx, version);
+    }
+
     code = ubik_RawGetHeader(trans, &hdr);
     if (code != 0) {
 	return code;
@@ -1771,6 +1877,10 @@ ubik_RawSetVersion(struct ubik_trans *trans, struct ubik_version *version)
 
     if (!ubik_RawTrans(trans) || trans->type != UBIK_WRITETRANS) {
 	return UBADTYPE;
+    }
+
+    if (ubik_KVTrans(trans)) {
+	return ukv_setlabel(trans->kv_tx, version);
     }
 
     hdr.version.epoch = htonl(version->epoch);

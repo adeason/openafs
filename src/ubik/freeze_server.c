@@ -506,7 +506,7 @@ ufreeze_freezedb(struct afsctl_call *ctl,
     opr_Assert(ufreeze_active_frz == NULL);
     ufreeze_active_frz = frz;
 
-    code = uphys_getlabel(ubik_dbase, 0, &version);
+    code = udb_getlabel_db(ubik_dbase, &version);
     if (code != 0) {
 	ViceLog(0, ("ubik: ufreeze_freezedb (%s): Cannot get db label, code %d\n",
 		    reason, code));
@@ -743,7 +743,7 @@ ufreeze_install(struct afsctl_call *ctl,
     /* Check that the existing db matches what we're given. */
 
     DBHOLD(dbase);
-    code = uphys_getlabel(dbase, 0, &disk_vers32);
+    code = udb_getlabel_db(dbase, &disk_vers32);
     DBRELE(dbase);
     if (code != 0) {
 	goto done;
@@ -784,7 +784,7 @@ ufreeze_install(struct afsctl_call *ctl,
 
     /* Check that the new db on disk matches the version we were given. */
 
-    code = uphys_getlabel_path(path, &disk_vers32);
+    code = udb_getlabel_path(path, &disk_vers32);
     if (code != 0) {
 	ViceLog(0, ("ubik: Cannot install new db for freezeid %llu: cannot open "
 		    "new database suffix %s (code %d)\n",

@@ -766,7 +766,7 @@ frztest_install(struct ubiktest_cbinfo *info, struct ubiktest_ops *ops)
      */
 
     new_path = afstest_asprintf("%s.NEW", info->db_path);
-    opr_Verify(uphys_copydb(test->db_path, new_path) == 0);
+    opr_Verify(udb_copydb(test->db_path, new_path) == 0);
 
     ctl_run(info->confdir, frzops->suite, "db-install",
 	    "-input %s -no-backup", new_path);

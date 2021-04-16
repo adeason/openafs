@@ -247,7 +247,7 @@ DumpCmd(struct cmd_syndesc *as, void *rock)
 
     print_nq(uctl, "Dumping database... ");
 
-    code = uphys_copydb(uctl->db_path, uctl->out_path);
+    code = udb_copydb(uctl->db_path, uctl->out_path);
     if (code != 0) {
 	print_error(code, "Failed to dump db to %s", uctl->out_path);
 	goto error;
@@ -303,7 +303,7 @@ do_install(struct ubikctl *uctl, struct cmd_syndesc *as, int restore)
 	    goto error;
 	}
 
-	code = uphys_copydb(uctl->in_path, db_path);
+	code = udb_copydb(uctl->in_path, db_path);
 	if (code != 0) {
 	    print_error(code, "Failed to copy db to %s", db_path);
 	    goto error;
@@ -775,7 +775,7 @@ preamble(struct ubikctl *uctl, struct cmd_syndesc *as)
 	}
 
 	/* Check that we can open the input db. */
-	code = uphys_getlabel_path(uctl->in_path, &in_vers);
+	code = udb_getlabel_path(uctl->in_path, &in_vers);
 	if (code != 0) {
 	    print_error(code, "Failed to get version of %s", uctl->in_path);
 	    goto error;
