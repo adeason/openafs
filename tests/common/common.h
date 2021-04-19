@@ -113,6 +113,18 @@ extern struct afstest_server_type afstest_server_vl;
 extern struct afstest_server_type afstest_server_pt;
 
 struct rx_call;
+
+/* Options for afstest_StartServerOpts */
+struct afstest_server_opts {
+    struct afstest_server_type *server;
+			/**< which server to start */
+    char *dirname;	/**< the config dir to use */
+    pid_t *serverPid;	/**< set to the server's pid, after it's successfuly
+			 *   been started. */
+    char **extra_argv;	/**< if not NULL, extra arguments passed to the server
+			 *   process */
+};
+extern int afstest_StartServerOpts(struct afstest_server_opts *opts);
 extern int afstest_StartServer(struct afstest_server_type *server,
 			       char *dirname, pid_t *serverPid);
 extern int afstest_StopServer(pid_t serverPid);
@@ -165,6 +177,9 @@ struct ubiktest_ops {
     int create_db;  /**< If nonzero, run the dataset's 'create_func' function
 		     *   to create the sample dataset via RPCs and commands,
 		     *   etc. */
+
+    char **server_argv;	/**< If set, pass these extra arguments to the server
+			 *   process. */
 
     void (*pre_start)(struct ubiktest_cbinfo *info, struct ubiktest_ops *ops);
 		    /**< If set, run this right before starting the server
@@ -272,6 +287,8 @@ struct frztest_ops {
      * result in printing 'blank_cmd_stdout' to stdout. */
     char *blank_cmd;
     char *blank_cmd_stdout;
+
+    char **server_argv;
 };
 extern void frztest_runtests(struct ubiktest_dataset *ds,
 			     struct frztest_ops *ops);

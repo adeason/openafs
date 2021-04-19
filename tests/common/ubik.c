@@ -226,9 +226,11 @@ ubiktest_runtest(struct ubiktest_dataset *ds, struct ubiktest_ops *ops)
     struct ubiktest_dbtest *testlist;
     struct stat st;
     struct ubiktest_cbinfo cbinfo;
+    struct afstest_server_opts opts;
     const char *progname = getprogname();
 
     memset(&cbinfo, 0, sizeof(cbinfo));
+    memset(&opts, 0, sizeof(opts));
 
     opr_Assert(progname != NULL);
 
@@ -273,7 +275,12 @@ ubiktest_runtest(struct ubiktest_dataset *ds, struct ubiktest_ops *ops)
 	(*ops->pre_start)(&cbinfo, ops);
     }
 
-    code = afstest_StartServer(server, dirname, &pid);
+    opts.server = server;
+    opts.dirname = dirname;
+    opts.serverPid = &pid;
+    opts.extra_argv = ops->server_argv;
+
+    code = afstest_StartServerOpts(&opts);
     if (code != 0) {
 	afs_com_err(progname, code, "while starting server");
 	goto error;
@@ -1029,6 +1036,7 @@ frztest_runtests(struct ubiktest_dataset *ds, struct frztest_ops *ops)
 	utest.descr = afstest_asprintf("dump %s", ops->use_db);
 	utest.use_db = ops->use_db;
 	utest.post_start = frztest_dump;
+	utest.server_argv = ops->server_argv;
 
 	ubiktest_runtest(ds, &utest);
 
@@ -1039,6 +1047,7 @@ frztest_runtests(struct ubiktest_dataset *ds, struct frztest_ops *ops)
 	utest.rock = &frztest;
 	utest.use_db = "none";
 	utest.post_start = frztest_restore;
+	utest.server_argv = ops->server_argv;
 
 	if (pass == 1) {
 	    utest.descr = afstest_asprintf("restore %s", ops->use_db);
@@ -1057,6 +1066,7 @@ frztest_runtests(struct ubiktest_dataset *ds, struct frztest_ops *ops)
 	utest.descr = afstest_asprintf("restore invalid db over %s", ops->use_db);
 	utest.use_db = ops->use_db;
 	utest.post_start = frztest_restore_invalid;
+	utest.server_argv = ops->server_argv;
 
 	ubiktest_runtest(ds, &utest);
 
@@ -1068,6 +1078,7 @@ frztest_runtests(struct ubiktest_dataset *ds, struct frztest_ops *ops)
 	utest.descr = afstest_asprintf("install %s", ops->use_db);
 	utest.use_db = "none";
 	utest.post_start = frztest_install;
+	utest.server_argv = ops->server_argv;
 
 	ubiktest_runtest(ds, &utest);
 
@@ -1102,6 +1113,7 @@ frztest_runtests(struct ubiktest_dataset *ds, struct frztest_ops *ops)
 
 	utest.use_db = ops->use_db;
 	utest.post_start = frztest_revert;
+	utest.server_argv = ops->server_argv;
 
 	ubiktest_runtest(ds, &utest);
 
@@ -1118,6 +1130,7 @@ frztest_runtests(struct ubiktest_dataset *ds, struct frztest_ops *ops)
 	utest.descr = afstest_asprintf("db-freeze-dist %s", ops->use_db);
 	utest.use_db = "none",
 	utest.post_start = frztest_dist;
+	utest.server_argv = ops->server_argv;
 
 	ubiktest_runtest(ds, &utest);
 
