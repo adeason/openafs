@@ -416,7 +416,7 @@ SDISK_GetFile(struct rx_call *rxcall, afs_int32 file,
 	return UNOENT;
     }
 
-    return uremote_sgetfile(rxcall, &urecovery_senddb_sgetfile_v1, version);
+    return uremote_sgetfile(rxcall, &urecovery_senddb_sgetfile_old, version);
 }
 
 static int
@@ -488,7 +488,7 @@ SDISK_SendFile(struct rx_call *rxcall, afs_int32 file,
 	return UNOENT;
     }
 
-    return uremote_ssendfile(rxcall, &urecovery_recvdb_ssendfile_v1, length,
+    return uremote_ssendfile(rxcall, &urecovery_recvdb_ssendfile_old, length,
 			     avers);
 }
 
@@ -660,4 +660,26 @@ SDISK_SetVersion(struct rx_call *rxcall, struct ubik_tid *atid,
 	return (code);
     }
     return uremote_setversion(atid, oldversionp, newversionp);
+}
+
+afs_int32
+SDISK_GetFile2(struct rx_call *rxcall)
+{
+    afs_int32 code;
+    if ((code = ubik_CheckAuth(rxcall))) {
+	return code;
+    }
+
+    return uremote_sgetfile(rxcall, &urecovery_senddb_sgetfile2, NULL);
+}
+
+afs_int32
+SDISK_SendFile2(struct rx_call *rxcall)
+{
+    afs_int32 code;
+    if ((code = ubik_CheckAuth(rxcall))) {
+	return code;
+    }
+
+    return uremote_ssendfile(rxcall, &urecovery_recvdb_ssendfile2, 0, NULL);
 }
