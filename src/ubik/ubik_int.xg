@@ -23,6 +23,10 @@ struct ubik_tid {
     afs_int32 epoch;
     afs_int32 counter;
 };
+struct ubik_tid64 {
+    struct afs_time64 epoch64;
+    afs_int64 counter64;
+};
 
 const UBIK_MAX_INTERFACE_ADDR =	256; /* max interfaces per server */
 
@@ -158,6 +162,51 @@ typedef struct ubik_iovec iovec_wrt<IOVEC_MAXWRT>;
 const UBIK_KVBUF_MAX = 1073741824; /* 1 GiB */
 typedef opaque ubik_kvbuf<UBIK_KVBUF_MAX>;
 
+/* ubik transaction operation; ubik_txop for short */
+
+enum ubik_txop_type {
+    UBIK_TXOP_BEGIN	    = 0x02,
+    UBIK_TXOP_COMMIT	    = 0x03,
+    UBIK_TXOP_LOCK	    = 0x04,
+    UBIK_TXOP_SETVERSION    = 0x05,
+
+    UBIK_TXOP_KVPUT	    = 0x10,
+    UBIK_TXOP_KVREPLACE	    = 0x11,
+    UBIK_TXOP_KVDELETE	    = 0x12
+};
+struct ubik_txop_lock {
+    afs_int32 file;
+    afs_int32 type;
+};
+struct ubik_txop_setversion {
+    struct ubik_version64 old_version;
+    struct ubik_version64 new_version;
+};
+struct ubik_txop_kvput {
+    ubik_kvbuf key;
+    ubik_kvbuf value;
+};
+union ubik_txop switch (ubik_txop_type tag) {
+    case UBIK_TXOP_BEGIN:
+	struct ubik_version64 begin_version;
+    case UBIK_TXOP_COMMIT:
+	void;
+    case UBIK_TXOP_LOCK:
+	struct ubik_txop_lock lock;
+    case UBIK_TXOP_SETVERSION:
+	struct ubik_txop_setversion setversion;
+
+    case UBIK_TXOP_KVPUT:
+	struct ubik_txop_kvput kvput;
+    case UBIK_TXOP_KVREPLACE:
+	struct ubik_txop_kvput kvreplace;
+    case UBIK_TXOP_KVDELETE:
+	ubik_kvbuf kvdelete_key;
+};
+
+const UBIK_TXOPLIST_MAX = 1048576; /* 1024 * 1024 */
+typedef ubik_txop ubik_txop_list<UBIK_TXOPLIST_MAX>;
+
 struct ubik_dbstream_kvitem {
     /* Note that a 0-length key and 0-length value indicates EOF. Both must be
      * 0-length; if only one if 0-length, that is an error. */
@@ -273,6 +322,7 @@ statindex 12
 
 #define DISK_GETFILE2		30017 /* XXX nonstandard */
 #define DISK_SENDFILE2		30018 /* XXX nonstandard */
+#define DISK_TXOPSTREAM		30019 /* XXX nonstandard */
 
 /* Disk package interface calls - the order of
  * these declarations is important.
@@ -328,3 +378,5 @@ SetVersion      (IN ubik_tid     *tid,
 GetFile2	() split = DISK_GETFILE2;
 
 SendFile2	() split = DISK_SENDFILE2;
+
+TXOPStream	(IN ubik_tid64 *tid) split = DISK_TXOPSTREAM;

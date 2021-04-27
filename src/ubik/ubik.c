@@ -17,6 +17,7 @@
 #include <afs/cellconfig.h>
 #include <afs/afsutil.h>
 #include <afs/okv.h>
+#include <opr/time64.h>
 #ifdef AFS_PTHREAD_ENV
 # include <afs/afsctl.h>
 #endif
@@ -207,6 +208,77 @@ ContactQuorum_rcode(int okcalls, afs_int32 rcode)
 	return (rcode != 0) ? rcode : UNOQUORUM;
 }
 
+static afs_int32
+CallDISK_TXOPStream(struct rx_connection *conn, struct ubik_trans *atrans,
+		    struct ubik_txop *txop)
+{
+    struct rx_call *call = NULL;
+    struct ubik_tid64 tid;
+    int success;
+    int code;
+    XDR xdrs;
+
+    struct ubik_txop *txop_slot = NULL;
+    ubik_txop_list txlist;
+
+    memset(&tid, 0, sizeof(tid));
+    memset(&txlist, 0, sizeof(txlist));
+
+    txlist.val = atrans->txop_buf;
+    txlist.len = atrans->txop_count;
+
+    opr_Assert(txlist.len <= UBIK_TXBUF_MAX);
+
+    if (txop != NULL) {
+	/* Append the given 'txop' to the end of the 'txlist' array. Remember
+	 * the "slot" it's in, to zero it easily later. */
+	txop_slot = &txlist.val[txlist.len];
+	txlist.len++;
+
+	*txop_slot = *txop;
+    }
+
+    /* If we didn't have anything to send, our caller should have skipped
+     * calling us. */
+    opr_Assert(txlist.len > 0);
+
+    tid.counter64 = atrans->tid.counter;
+    code = opr_time64_fromSecs(atrans->tid.epoch, &tid.epoch64);
+    if (code != 0) {
+	code = UINTERNAL;
+	goto done;
+    }
+
+    call = rx_NewCall(conn);
+
+    code = StartDISK_TXOPStream(call, &tid);
+    if (code != 0) {
+	goto done;
+    }
+
+    xdrrx_create(&xdrs, call, XDR_ENCODE);
+
+    success = xdr_ubik_txop_list(&xdrs, &txlist);
+    if (!success) {
+	code = RXGEN_CC_MARSHAL;
+	goto done;
+    }
+
+    code = EndDISK_TXOPStream(call);
+    if (code != 0) {
+	goto done;
+    }
+
+ done:
+    if (txop_slot != NULL) {
+	memset(txop_slot, 0, sizeof(*txop_slot));
+    }
+    if (call != NULL) {
+	code = rx_EndCall(call, code);
+    }
+    return code;
+}
+
 /*!
  * \brief Perform an operation at a quorum, handling error conditions.
  * \return 0 if all worked and a quorum was contacted successfully
@@ -307,7 +379,7 @@ ContactQuorum_DISK_WriteV(struct ubik_trans *atrans, int aflags,
 }
 
 
-afs_int32
+static afs_int32
 ContactQuorum_DISK_SetVersion(struct ubik_trans *atrans, int aflags,
 			      ubik_version *OldVersion,
 			      ubik_version *NewVersion)
@@ -323,6 +395,26 @@ ContactQuorum_DISK_SetVersion(struct ubik_trans *atrans, int aflags,
 	if (conn)
 	    code = DISK_SetVersion(conn, &atrans->tid, OldVersion, NewVersion);
 	done = ContactQuorum_iterate(atrans, aflags, &ts, &conn, &rcode, &okcalls, code, procname);
+    }
+    return ContactQuorum_rcode(okcalls, rcode);
+}
+
+static afs_int32
+ContactQuorum_TXOPStream(struct ubik_trans *atrans, int aflags, struct ubik_txop *txop)
+{
+    struct ubik_server *ts = NULL;
+    afs_int32 code = 0, rcode, okcalls;
+    struct rx_connection *conn;
+    int done;
+    char *procname = "DISK_TXOPStream";
+
+    done = ContactQuorum_iterate(atrans, aflags, &ts, &conn, &rcode, &okcalls,
+				 code, procname);
+    while (!done) {
+	if (conn)
+	    code = CallDISK_TXOPStream(conn, atrans, txop);
+	done = ContactQuorum_iterate(atrans, aflags, &ts, &conn, &rcode,
+				     &okcalls, code, procname);
     }
     return ContactQuorum_rcode(okcalls, rcode);
 }
@@ -696,6 +788,213 @@ ubik_ServerInit(afs_uint32 myHost, short myPort, afs_uint32 serverList[],
     return ubik_ServerInitByOpts(&opts, dbase);
 }
 
+/* Free the transaction's list of buffered txops. */
+void
+ubik_txbuf_free(struct ubik_trans *atrans)
+{
+    int txop_i;
+    for (txop_i = 0; txop_i < atrans->txop_count; txop_i++) {
+	xdrfree_ubik_txop(&atrans->txop_buf[txop_i]);
+    }
+    atrans->txop_count = 0;
+}
+
+/*
+ * Flush the transaction's list of buffered txops, appending the given 'txop'
+ * at the same time (if any). Apply 'flags' to the ContactQuorum_ call when
+ * sending txops to other sites.
+ */
+static int
+txbuf_flush(struct ubik_trans *atrans, int flags, struct ubik_txop *txop)
+{
+    int code;
+
+    if (atrans->txop_count == 0 && txop == NULL) {
+	return 0;
+    }
+
+    code = ContactQuorum_TXOPStream(atrans, flags, txop);
+    ubik_txbuf_free(atrans);
+
+    return code;
+}
+
+/* Make a deep copy of 'src' to 'dest', via xdr. */
+static int
+txop_copy(struct ubik_txop *src, struct ubik_txop *dest)
+{
+    char stbuf[64];
+    XDR xdrs;
+    int success;
+    int len;
+    int code = 0;
+    void *buf;
+    void *buf_free = NULL;
+
+    memset(&xdrs, 0, sizeof(xdrs));
+    xdrlen_create(&xdrs);
+
+    success = xdr_ubik_txop(&xdrs, src);
+    if (!success) {
+	ViceLog(0, ("ubik: Internal error at %s:%d\n", __FILE__, __LINE__));
+	code = UINTERNAL;
+	goto done;
+    }
+
+    len = xdr_getpos(&xdrs);
+    opr_Assert(len > 0);
+
+    if (len < sizeof(stbuf)) {
+	buf = stbuf;
+    } else {
+	buf = buf_free = calloc(1, len);
+	if (buf_free == NULL) {
+	    code = UNOMEM;
+	    goto done;
+	}
+    }
+
+    memset(&xdrs, 0, sizeof(xdrs));
+    xdrmem_create(&xdrs, buf, len, XDR_ENCODE);
+
+    success = xdr_ubik_txop(&xdrs, src);
+    if (!success) {
+	ViceLog(0, ("ubik: Internal error at %s:%d\n", __FILE__, __LINE__));
+	code = UINTERNAL;
+	goto done;
+    }
+
+    memset(&xdrs, 0, sizeof(xdrs));
+    xdrmem_create(&xdrs, buf, len, XDR_DECODE);
+
+    success = xdr_ubik_txop(&xdrs, dest);
+    if (!success) {
+	xdrfree_ubik_txop(dest);
+	code = UNOMEM;
+	goto done;
+    }
+
+ done:
+    free(buf_free);
+    return code;
+}
+
+/* Append 'txop' to the transaction's list of buffered txops. */
+static int
+txbuf_append_locked(struct ubik_trans *atrans, struct ubik_txop *txop)
+{
+    int txop_i;
+    int code;
+    struct ubik_txop *dest;
+
+    if (atrans->type != UBIK_WRITETRANS || !ubik_KVTrans(atrans)) {
+	return UBADTYPE;
+    }
+
+    txop_i = atrans->txop_count;
+
+    if (txop_i >= UBIK_TXBUF_MAX) {
+	/* Our buffer of txops is full; write it to the net (along with our
+	 * current txop). */
+	return txbuf_flush(atrans, 0, txop);
+    }
+
+    dest = &atrans->txop_buf[txop_i];
+    code = txop_copy(txop, dest);
+    if (code != 0) {
+	return code;
+    }
+
+    atrans->txop_count++;
+
+    return 0;
+}
+
+int
+ubik_txbuf_append(struct ubik_trans *atrans, struct ubik_txop *txop)
+{
+    int code;
+    DBHOLD(atrans->dbase);
+    code = txbuf_append_locked(atrans, txop);
+    if (code != 0) {
+	udisk_abort(atrans);
+	ContactQuorum_NoArguments(DISK_Abort, atrans, 0, "DISK_Abort");
+    }
+    DBRELE(atrans->dbase);
+    return code;
+}
+
+static int
+cq_disk_begin(struct ubik_trans *atrans, int flags)
+{
+    if (!ubik_KVTrans(atrans)) {
+	return ContactQuorum_NoArguments(DISK_Begin, atrans, flags,
+					 "DISK_Begin");
+    } else {
+	struct ubik_txop txop;
+
+	memset(&txop, 0, sizeof(txop));
+	txop.tag = UBIK_TXOP_BEGIN;
+	udb_v32to64(&atrans->dbase->version, &txop.u.begin_version);
+
+	return txbuf_flush(atrans, flags, &txop);
+    }
+}
+
+static int
+cq_disk_lock(struct ubik_trans *atrans)
+{
+    if (!ubik_KVTrans(atrans)) {
+	return ContactQuorum_DISK_Lock(atrans, 0, 0, 1 /*unused */ ,
+				       1 /*unused */ , LOCKWRITE);
+    } else {
+	struct ubik_txop txop;
+
+	memset(&txop, 0, sizeof(txop));
+	txop.tag = UBIK_TXOP_LOCK;
+	txop.u.lock.file = 0;
+	txop.u.lock.type = LOCKWRITE;
+
+	return txbuf_append_locked(atrans, &txop);
+    }
+}
+
+int
+ubik_cq_disk_setversion(struct ubik_trans *atrans, int flags,
+			struct ubik_version *oldversion,
+			struct ubik_version *newversion)
+{
+    if (!ubik_KVTrans(atrans)) {
+	return ContactQuorum_DISK_SetVersion(atrans, flags, oldversion,
+					     newversion);
+    } else {
+	struct ubik_txop txop;
+
+	memset(&txop, 0, sizeof(txop));
+	txop.tag = UBIK_TXOP_SETVERSION;
+	udb_v32to64(oldversion, &txop.u.setversion.old_version);
+	udb_v32to64(newversion, &txop.u.setversion.new_version);
+
+	return txbuf_flush(atrans, flags, &txop);
+    }
+}
+
+static int
+cq_disk_commit(struct ubik_trans *atrans, int flags)
+{
+    if (!ubik_KVTrans(atrans)) {
+	return ContactQuorum_NoArguments(DISK_Commit, atrans, flags,
+					 "DISK_Commit");
+    } else {
+	struct ubik_txop txop;
+
+	memset(&txop, 0, sizeof(txop));
+	txop.tag = UBIK_TXOP_COMMIT;
+
+	return txbuf_flush(atrans, flags, &txop);
+    }
+}
+
 static int
 BeginTransRaw(struct ubik_dbase *dbase, afs_int32 transMode,
 	      struct ubik_trans **transPtr, int readAny)
@@ -795,7 +1094,7 @@ BeginTrans(struct ubik_dbase *dbase, afs_int32 transMode,
     }
 
     /* create the transaction */
-    code = udisk_begin(dbase, transMode, &jt);	/* can't take address of register var */
+    code = udisk_begin(dbase, transMode, 0, &jt);	/* can't take address of register var */
     tt = jt;			/* move to a register */
     if (code || tt == NULL) {
 	DBRELE(dbase);
@@ -822,7 +1121,7 @@ BeginTrans(struct ubik_dbase *dbase, afs_int32 transMode,
 
     if (transMode == UBIK_WRITETRANS) {
 	/* next try to start transaction on appropriate number of machines */
-	code = ContactQuorum_NoArguments(DISK_Begin, tt, CCheckSyncAdvertised, "DISK_Begin");
+	code = cq_disk_begin(tt, CCheckSyncAdvertised);
 	if (code) {
 	    /* we must abort the operation */
 	    udisk_abort(tt);
@@ -1063,7 +1362,7 @@ ubik_EndTrans(struct ubik_trans *transPtr)
 
 	ReleaseWriteLock(&dbase->cache_lock);
 
-	code = ContactQuorum_NoArguments(DISK_Commit, transPtr, CStampVersion, "DISK_Commit");
+	code = cq_disk_commit(transPtr, CStampVersion);
 
     } else {
 	memset(&dbase->cachedVersion, 0, sizeof(struct ubik_version));
@@ -1459,8 +1758,7 @@ ubik_SetLock(struct ubik_trans *atrans, afs_int32 apos, afs_int32 alen,
 	/* now do the operation locally, and propagate it out */
 	code = ulock_getLock(atrans, atype, 1);
 	if (code == 0) {
-	    code = ContactQuorum_DISK_Lock(atrans, 0, 0, 1 /*unused */ ,
-				 	   1 /*unused */ , LOCKWRITE);
+	    code = cq_disk_lock(atrans);
 	}
 	if (code) {
 	    /* we must abort the operation */

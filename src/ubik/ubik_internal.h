@@ -65,6 +65,9 @@ struct ubik_dbase {
     FILE *raw_fh;   /*!< for raw dbs, the file handle to the db file */
 };
 
+/* Max number of txops we buffer in txop_buf. */
+#define UBIK_TXBUF_MAX 15
+
 /*!
  * \brief representation of a ubik transaction
  */
@@ -81,6 +84,11 @@ struct ubik_trans {
     char type;			/*!< type of trans */
     iovec_wrt iovec_info;
     iovec_buf iovec_data;
+    int txop_count;		/*!< count of valid items in txop_buf */
+
+    /* We have +1 slots in txop_buf, to allow for sending a single extra txop
+     * inline, without copying. */
+    struct ubik_txop txop_buf[UBIK_TXBUF_MAX+1];
 };
 
 /*! \name some ubik parameters */
@@ -108,6 +116,9 @@ struct ubik_trans {
 #define TRRAW		0x80    /*!< is this a tx for a raw db? */
 #define	TRKEYVAL       0x100	/*!< this trans uses the KV store instead of
 				 *   flat-file access */
+#define TRREMOTE       0x200	/*!< tx is being accessed by remote DISK_*
+				 *   calls (and so, may be accessed across
+				 *   threads) */
 /*\}*/
 
 /*! \name ubik system database numbers */
@@ -406,10 +417,9 @@ int urecovery_distribute_db(struct ubik_dbase *dbase, int *a_nsent);
 /*\}*/
 
 /*! \name ubik.c */
-extern afs_int32 ContactQuorum_DISK_SetVersion(struct ubik_trans *atrans,
-					       int aflags,
-					       ubik_version *OldVersion,
-					       ubik_version *NewVersion);
+extern int ubik_cq_disk_setversion(struct ubik_trans *atrans, int flags,
+				   struct ubik_version *oldversion,
+				   struct ubik_version *newversion);
 
 extern void panic(char *format, ...)
     AFS_ATTRIBUTE_FORMAT(__printf__, 1, 2);
@@ -417,6 +427,10 @@ extern void panic(char *format, ...)
 extern afs_uint32 ubikGetPrimaryInterfaceAddr(afs_uint32 addr);
 
 extern int ubik_CheckAuth(struct rx_call *);
+
+extern int ubik_txbuf_append(struct ubik_trans *atrans,
+			     struct ubik_txop *txop);
+extern void ubik_txbuf_free(struct ubik_trans *atrans);
 
 /*\}*/
 
@@ -446,7 +460,7 @@ extern int udisk_read(struct ubik_trans *atrans, afs_int32 afile,
 		      void *abuffer, afs_int32 apos, afs_int32 alen);
 extern int udisk_write(struct ubik_trans *atrans, afs_int32 afile,
 		       void *abuffer, afs_int32 apos, afs_int32 alen);
-extern int udisk_begin(struct ubik_dbase *adbase, int atype,
+extern int udisk_begin(struct ubik_dbase *adbase, int atype, int flags,
 		       struct ubik_trans **atrans);
 extern int udisk_commit(struct ubik_trans *atrans);
 extern int udisk_abort(struct ubik_trans *atrans);
@@ -546,6 +560,9 @@ int ukv_setlabel(struct okv_trans *tx, struct ubik_version *version);
 int ukv_setlabel_db(struct ubik_dbase *dbase, struct ubik_version *version);
 int ukv_setlabel_path(char *path, struct ubik_version *version);
 int ukv_begin(struct ubik_trans *atrans, struct okv_trans **a_tx);
+int ukv_put(struct ubik_trans *atrans, struct rx_opaque *key,
+	    struct rx_opaque *value, int replace);
+int ukv_delete(struct ubik_trans *atrans, struct rx_opaque *key, int *a_noent);
 int ukv_commit(struct okv_trans **a_tx, struct ubik_version *version);
 int ukv_stat(char *path, struct ubik_stat *astat);
 int ukv_create(char *kvdir, char *okv_engine, struct okv_dbhandle **a_dbh);

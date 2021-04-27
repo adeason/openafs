@@ -18,6 +18,7 @@
 #include <rx/xdr.h>
 #include <rx/rx.h>
 #include <afs/afsutil.h>
+#include <opr/time64.h>
 
 #include "ubik_internal.h"
 
@@ -38,7 +39,7 @@ struct ubik_trans *ubik_currentTrans = 0;
  * sync site is executing a write transaction.
  */
 static afs_int32
-uremote_begin(struct ubik_tid *atid)
+uremote_begin(struct ubik_tid *atid, struct ubik_version64 *avers)
 {
     afs_int32 code;
 
@@ -58,8 +59,21 @@ uremote_begin(struct ubik_tid *atid)
 	code = UNOQUORUM;
 	goto out;
     }
+    if (avers != NULL) {
+	struct ubik_version64 version;
+	udb_v32to64(&ubik_dbase->version, &version);
+
+	if (udb_vcmp64(avers, &version) != 0) {
+	    ViceLog(0, ("ubik: Received wrong version in TXOP_BEGIN: "
+		    "%lld.%lld != %lld.%lld\n",
+		    avers->epoch64.clunks, avers->counter64,
+		    version.epoch64.clunks, version.counter64));
+	    code = USYNC;
+	    goto out;
+	}
+    }
     urecovery_CheckTid(atid, 1);
-    code = udisk_begin(ubik_dbase, UBIK_WRITETRANS, &ubik_currentTrans);
+    code = udisk_begin(ubik_dbase, UBIK_WRITETRANS, TRREMOTE, &ubik_currentTrans);
     if (!code && ubik_currentTrans) {
 	/* label this trans with the right trans id */
 	ubik_currentTrans->tid.epoch = atid->epoch;
@@ -79,7 +93,7 @@ SDISK_Begin(struct rx_call *rxcall, struct ubik_tid *atid)
     if ((code = ubik_CheckAuth(rxcall))) {
 	return code;
     }
-    return uremote_begin(atid);
+    return uremote_begin(atid, NULL);
 }
 
 static afs_int32
@@ -682,4 +696,183 @@ SDISK_SendFile2(struct rx_call *rxcall)
     }
 
     return uremote_ssendfile(rxcall, &urecovery_recvdb_ssendfile2, 0, NULL);
+}
+
+static afs_int32
+uremote_kvput(struct ubik_tid *atid, struct ubik_txop_kvput *kvput, int replace)
+{
+    afs_int32 code;
+
+    DBHOLD(ubik_dbase);
+
+    if (!ubik_currentTrans) {
+	code = USYNC;
+	goto done;
+    }
+
+    if (ubik_currentTrans->type != UBIK_WRITETRANS) {
+	code = UBADTYPE;
+	goto done;
+    }
+
+    urecovery_CheckTid(atid, 0);
+    if (!ubik_currentTrans) {
+	code = USYNC;
+	goto done;
+    }
+
+    code = ukv_put(ubik_currentTrans, &kvput->key, &kvput->value, replace);
+
+ done:
+    DBRELE(ubik_dbase);
+    return code;
+}
+
+static afs_int32
+uremote_kvdelete(struct ubik_tid *atid, struct rx_opaque *key)
+{
+    afs_int32 code;
+
+    DBHOLD(ubik_dbase);
+
+    if (!ubik_currentTrans) {
+	code = USYNC;
+	goto done;
+    }
+
+    if (ubik_currentTrans->type != UBIK_WRITETRANS) {
+	code = UBADTYPE;
+	goto done;
+    }
+
+    urecovery_CheckTid(atid, 0);
+    if (!ubik_currentTrans) {
+	code = USYNC;
+	goto done;
+    }
+
+    /*
+     * Note that it is an error if the given key doesn't exist (that's why we
+     * pass NULL for a_noent). If the given key doesn't exist, the sync site
+     * should have skipped sending the 'kvdelete' op to us.
+     */
+    code = ukv_delete(ubik_currentTrans, key, NULL);
+
+ done:
+    DBRELE(ubik_dbase);
+    return code;
+}
+
+afs_int32
+SDISK_TXOPStream(struct rx_call *rxcall, struct ubik_tid64 *atid)
+{
+    afs_int32 code;
+    XDR xdrs;
+    int txop_i;
+    int success;
+    ubik_txop_list txlist;
+    struct ubik_tid ttid;
+    afs_int64 epoch;
+
+    memset(&txlist, 0, sizeof(txlist));
+    memset(&ttid, 0, sizeof(ttid));
+
+    if ((code = ubik_CheckAuth(rxcall))) {
+	return (code);
+    }
+
+    epoch = opr_time64_toSecs(&atid->epoch64);
+    if (epoch > MAX_AFS_INT32 || epoch < MIN_AFS_INT32 ||
+	atid->counter64 > MAX_AFS_INT32 || atid->counter64 < MIN_AFS_INT32) {
+	ViceLog(0, ("ubik: DISK_TXOPStream tid not supported (out of range): "
+		    "%lld.%lld\n",
+		    atid->epoch64.clunks, atid->counter64));
+	return UBADTYPE;
+    }
+
+    ttid.epoch = epoch;
+    ttid.counter = atid->counter64;
+
+    xdrrx_create(&xdrs, rxcall, XDR_DECODE);
+
+    success = xdr_ubik_txop_list(&xdrs, &txlist);
+    if (!success) {
+	ViceLog(0, ("ubik: Error reading DISK_TXOPStream contents.\n"));
+	code = RXGEN_SS_UNMARSHAL;
+	goto done;
+    }
+
+    for (txop_i = 0; txop_i < txlist.len; txop_i++) {
+	struct ubik_txop *txop;
+	txop = &txlist.val[txop_i];
+
+	switch (txop->tag) {
+	case UBIK_TXOP_BEGIN:
+	    code = uremote_begin(&ttid, &txop->u.begin_version);
+	    break;
+
+	case UBIK_TXOP_COMMIT:
+	    code = uremote_commit(&ttid);
+	    break;
+
+	case UBIK_TXOP_LOCK:
+	    {
+		struct ubik_txop_lock *lock;
+		lock = &txop->u.lock;
+		code = uremote_lock(&ttid, lock->file, 1, 1, lock->type);
+	    }
+	    break;
+
+	case UBIK_TXOP_SETVERSION:
+	    {
+		struct ubik_txop_setversion *setversion;
+		struct ubik_version oldversion;
+		struct ubik_version newversion;
+
+		memset(&oldversion, 0, sizeof(oldversion));
+		memset(&newversion, 0, sizeof(newversion));
+
+		setversion = &txop->u.setversion;
+
+		code = udb_v64to32("SDISK_SetVersion",
+				   &setversion->old_version, &oldversion);
+		if (code == 0) {
+		    code = udb_v64to32("SDISK_SetVersion",
+				       &setversion->new_version, &newversion);
+		}
+		if (code != 0) {
+		    goto done;
+		}
+
+		code = uremote_setversion(&ttid, &oldversion, &newversion);
+	    }
+	    break;
+
+	case UBIK_TXOP_KVPUT:
+	    code = uremote_kvput(&ttid, &txop->u.kvput, 0);
+	    break;
+
+	case UBIK_TXOP_KVREPLACE:
+	    code = uremote_kvput(&ttid, &txop->u.kvreplace, 1);
+	    break;
+
+	case UBIK_TXOP_KVDELETE:
+	    code = uremote_kvdelete(&ttid, &txop->u.kvdelete_key);
+	    break;
+
+	default:
+	    ViceLog(0, ("ubik: Received unrecognized opcode 0x%x in TXOPStream. "
+			"This server may need to be upgraded.\n",
+			txop->tag));
+	    code = RXGEN_OPCODE;
+	}
+
+	if (code != 0) {
+	    goto done;
+	}
+    }
+
+ done:
+    xdrfree_ubik_txop_list(&txlist);
+    return code;
 }

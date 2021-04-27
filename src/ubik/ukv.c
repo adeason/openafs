@@ -307,9 +307,11 @@ ubik_KVGetCopy(struct ubik_trans *trans, struct rx_opaque *key, void *dest,
     return check_okv(okv_get_copy(trans->kv_tx, key, dest, len, a_noent));
 }
 
-static int
-common_KVPut(struct ubik_trans *trans, struct rx_opaque *key,
-	     struct rx_opaque *value, int replace)
+/* Like ubik_KVPut/ubik_KVReplace, but only writes to the local store, not to
+ * remote sites. */
+int
+ukv_put(struct ubik_trans *trans, struct rx_opaque *key,
+	struct rx_opaque *value, int replace)
 {
     int code;
     int flags = 0;
@@ -333,6 +335,42 @@ common_KVPut(struct ubik_trans *trans, struct rx_opaque *key,
 	flags |= OKV_PUT_REPLACE;
     }
     return check_okv(okv_put(trans->kv_tx, key, value, flags));
+}
+
+static int
+common_KVPut(struct ubik_trans *trans, struct rx_opaque *key,
+	     struct rx_opaque *value, int replace)
+{
+    int code;
+    struct ubik_txop txop;
+    struct ubik_txop_kvput *item;
+
+    memset(&txop, 0, sizeof(txop));
+
+    code = ukv_put(trans, key, value, replace);
+    if (code != 0) {
+	return code;
+    }
+
+    if (ubik_RawTrans(trans)) {
+	return 0;
+    }
+
+    /* We've written the kv data to our local store, now write the data on the
+     * other sites. */
+
+    if (replace) {
+	txop.tag = UBIK_TXOP_KVREPLACE;
+	item = &txop.u.kvreplace;
+    } else {
+	txop.tag = UBIK_TXOP_KVPUT;
+	item = &txop.u.kvput;
+    }
+
+    item->key = *key;
+    item->value = *value;
+
+    return ubik_txbuf_append(trans, &txop);
 }
 
 /**
@@ -369,6 +407,26 @@ ubik_KVReplace(struct ubik_trans *trans, struct rx_opaque *key,
     return common_KVPut(trans, key, value, 1);
 }
 
+/* Like ubik_KVDelete, but only deletes from the local store, not to remote
+ * sites. */
+int
+ukv_delete(struct ubik_trans *trans, struct rx_opaque *key, int *a_noent)
+{
+    int code;
+
+    code = check_trans(trans);
+    if (code != 0) {
+	return code;
+    }
+
+    code = check_key_app(key);
+    if (code != 0) {
+	return code;
+    }
+
+    return check_okv(okv_del(trans->kv_tx, key, a_noent));
+}
+
 /**
  * Delete a key/value from the db.
  *
@@ -385,17 +443,35 @@ ubik_KVDelete(struct ubik_trans *trans, struct rx_opaque *key, int *a_noent)
 {
     int code;
 
-    code = check_trans(trans);
+    code = ukv_delete(trans, key, a_noent);
     if (code != 0) {
 	return code;
     }
 
-    code = check_key_app(key);
-    if (code != 0) {
-	return code;
+    if (ubik_RawTrans(trans)) {
+	return 0;
     }
 
-    return check_okv(okv_del(trans->kv_tx, key, a_noent));
+    if (a_noent != NULL && *a_noent) {
+	/*
+	 * If the given key doesn't exist, we don't need to propagate the
+	 * delete to the other sites, since the delete was a no-op. So, nothing
+	 * to do here.
+	 */
+    } else {
+	/* Otherwise, delete the key on our other sites. */
+	struct ubik_txop txop;
+	memset(&txop, 0, sizeof(txop));
+	txop.tag = UBIK_TXOP_KVDELETE;
+	txop.u.kvdelete_key = *key;
+
+	code = ubik_txbuf_append(trans, &txop);
+	if (code != 0) {
+	    return code;
+	}
+    }
+
+    return 0;
 }
 
 int
@@ -638,6 +714,14 @@ ukv_begin(struct ubik_trans *trans, struct okv_trans **a_tx)
     } else {
 	opr_Assert(trans->type == UBIK_WRITETRANS);
 	kv_flags |= OKV_BEGIN_RW;
+    }
+    if ((trans->flags & TRREMOTE) != 0) {
+	/*
+	 * For remote write transactions, we may access the transaction
+	 * from multiple threads. We must flag this, to accommodate the
+	 * semantics of some KV engines.
+	 */
+	kv_flags |= OKV_BEGIN_XTHREAD;
     }
     return check_okv(okv_begin(trans->kv_dbh, kv_flags, a_tx));
 }
