@@ -32,6 +32,7 @@
 struct afsctl_pkt;
 struct afsctl_call;
 
+int afsctl_socket_path(afs_uint32 server_type, char **a_path);
 int afsctl_send_pkt(struct afsctl_call *ctl, struct afsctl_pkt *pkt);
 int afsctl_recv_pkt(struct afsctl_call *ctl, int tag, struct afsctl_pkt *pkt);
 int afsctl_wait_recv(struct afsctl_call *ctl, afs_uint32 timeout_ms);

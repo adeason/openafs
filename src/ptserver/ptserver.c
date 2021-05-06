@@ -127,7 +127,7 @@
 #include <rx/rx_globals.h>
 #include <rx/rxstat.h>
 #include <lock.h>
-#include <ubik.h>
+#include <ubik_np.h>
 #include <afs/authcon.h>
 #include <afs/cmd.h>
 #include <afs/cellconfig.h>
@@ -136,6 +136,10 @@
 #include <afs/afsutil.h>
 #include <afs/audit.h>
 #include <afs/com_err.h>
+
+#ifdef AFS_PTHREAD_ENV
+# include <afs/afsctl.h>
+#endif
 
 #include "ptserver.h"
 #include "ptprototypes.h"
@@ -235,7 +239,8 @@ enum optionsList {
     OPT_rxmaxmtu,
     OPT_dotted,
     OPT_transarc_logs,
-    OPT_s2s_crypt
+    OPT_s2s_crypt,
+    OPT_ctl_socket
 };
 
 int
@@ -265,6 +270,12 @@ main(int argc, char **argv)
     struct cmd_item *auditLogList = NULL;
     char *s2s_crypt_behavior = NULL;
     struct afsconf_bsso_info bsso;
+    struct ubik_serverinit_opts u_opts;
+
+#ifdef AFS_PTHREAD_ENV
+    struct afsctl_serverinfo ctl_sinfo;
+    struct afsctl_server *ctl_server = NULL;
+#endif
 
 #ifdef	AFS_AIX32_ENV
     /*
@@ -286,6 +297,11 @@ main(int argc, char **argv)
     setprogname(argv[0]);
 
     memset(&bsso, 0, sizeof(bsso));
+    memset(&u_opts, 0, sizeof(u_opts));
+
+#ifdef AFS_PTHREAD_ENV
+    memset(&ctl_sinfo, 0, sizeof(ctl_sinfo));
+#endif
 
     /* Initialize dirpaths */
     if (!(initAFSDirPath() & AFSDIR_SERVER_PATHS_OK)) {
@@ -355,6 +371,11 @@ main(int argc, char **argv)
 #endif
     cmd_AddParmAtOffset(opts, OPT_transarc_logs, "-transarc-logs", CMD_FLAG,
 			CMD_OPTIONAL, "enable Transarc style logging");
+
+#ifdef AFS_PTHREAD_ENV
+    cmd_AddParmAtOffset(opts, OPT_ctl_socket, "-ctl-socket", CMD_SINGLE, CMD_OPTIONAL,
+			"path to ctl socket");
+#endif
 
     /* rx options */
     cmd_AddParmAtOffset(opts, OPT_peer, "-enable_peer_stats", CMD_FLAG,
@@ -451,6 +472,10 @@ main(int argc, char **argv)
 	    logopts.lopt_filename = AFSDIR_SERVER_PTLOG_FILEPATH;
     }
     cmd_OptionAsInt(opts, OPT_debug, &logopts.lopt_logLevel);
+
+#ifdef AFS_PTHREAD_ENV
+    cmd_OptionAsString(opts, OPT_ctl_socket, &ctl_sinfo.sock_path);
+#endif
 
     /* rx options */
     if (cmd_OptionPresent(opts, OPT_peer))
@@ -592,9 +617,23 @@ main(int argc, char **argv)
 	}
     }
 
-    code =
-	ubik_ServerInitByInfo(myHost, htons(AFSCONF_PROTPORT), &info, clones,
-			      pr_dbaseName, &dbase);
+#ifdef AFS_PTHREAD_ENV
+    ctl_sinfo.server_type = AFSCONF_PROTPORT;
+    code = afsctl_server_create(&ctl_sinfo, &ctl_server);
+    if (code != 0) {
+	ViceLog(0, ("ptserver: afsctl init failed: %d\n", code));
+	exit(1);
+    }
+    u_opts.ctl_server = ctl_server;
+#endif
+
+    u_opts.myHost = myHost;
+    u_opts.myPort = htons(AFSCONF_PROTPORT);
+    u_opts.info = &info;
+    u_opts.clones = clones;
+    u_opts.pathName = pr_dbaseName;
+
+    code = ubik_ServerInitByOpts(&u_opts, &dbase);
     if (code) {
 	afs_com_err(whoami, code, "Ubik init failed");
 	PT_EXIT(2);
@@ -605,6 +644,16 @@ main(int argc, char **argv)
     if (code) {
 	afs_com_err(whoami, code, "failed to install pt write hook");
 	PT_EXIT(1);
+    }
+#endif
+
+#ifdef AFS_PTHREAD_ENV
+    code = afsctl_server_listen(ctl_server);
+    if (code != 0) {
+	ViceLog(0, ("ptserver: afsctl listen failed (error %d). Startup will "
+		    "continue, but ctl functionality will be disabled\n",
+		    code));
+	code = 0;
     }
 #endif
 

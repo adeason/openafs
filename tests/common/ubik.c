@@ -229,6 +229,7 @@ ubiktest_runtest(struct ubiktest_dataset *ds, struct ubiktest_ops *ops)
 
     db_path = afstest_asprintf("%s/%s.DB0", dirname, server->db_name);
     cbinfo.db_path = db_path;
+    cbinfo.ctl_sock = afstest_asprintf("%s/%s", dirname, server->ctl_sock);
 
     /* Get the path to the sample db we're using. */
 
@@ -372,6 +373,7 @@ ubiktest_runtest(struct ubiktest_dataset *ds, struct ubiktest_ops *ops)
     free(src_db);
     free(db_path);
     free(db_copy);
+    free(cbinfo.ctl_sock);
     if (dirname != NULL) {
 	afstest_rmdtemp(dirname);
 	free(dirname);

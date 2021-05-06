@@ -131,6 +131,56 @@ static const int sock_cloexec = SOCK_CLOEXEC;
 static const int sock_cloexec;
 #endif
 
+static int
+calc_sockpath(afs_uint32 server_type, const char **a_path)
+{
+    if (*a_path != NULL) {
+	return 0;
+    }
+
+    switch (server_type) {
+    case AFSCONF_PROTPORT:
+	*a_path = AFSDIR_SERVER_PTSERVER_CTLSOCK_FILEPATH;
+	return 0;
+
+    case AFSCONF_VLDBPORT:
+	*a_path = AFSDIR_SERVER_VLSERVER_CTLSOCK_FILEPATH;
+	return 0;
+
+    default:
+	ViceLog(0, ("afsctl: Internal error: no path for unknown server "
+		"type 0x%x\n", server_type));
+	return ENOPROTOOPT;
+    }
+}
+
+/**
+ * Get the default socket path for a server_type.
+ *
+ * @param[in] server_type   The server type to get the socket path for.
+ * @param[out] a_path	    On success, set to the default socket path. This
+ *			    string must be freed by the caller.
+ * @return errno error codes
+ */
+int
+afsctl_socket_path(afs_uint32 server_type, char **a_path)
+{
+    int code;
+    const char *path = NULL;
+
+    code = calc_sockpath(server_type, &path);
+    if (code != 0) {
+	return code;
+    }
+
+    *a_path = strdup(path);
+    if (*a_path == NULL) {
+	return ENOMEM;
+    }
+
+    return 0;
+}
+
 /* Create a unix socket and the sockaddr to use for it. */
 int
 ctl_socket(afs_uint32 server_type, const char *path, int *a_sock,
@@ -141,21 +191,9 @@ ctl_socket(afs_uint32 server_type, const char *path, int *a_sock,
 
     memset(addr, 0, sizeof(*addr));
 
-    if (path == NULL) {
-	switch (server_type) {
-	case AFSCONF_PROTPORT:
-	    path = AFSDIR_SERVER_PTSERVER_CTLSOCK_FILEPATH;
-	    break;
-	case AFSCONF_VLDBPORT:
-	    path = AFSDIR_SERVER_VLSERVER_CTLSOCK_FILEPATH;
-	    break;
-
-	default:
-	    ViceLog(0, ("afsctl: Internal error: no path for unknown server "
-		    "type 0x%x\n", server_type));
-	    code = ENOPROTOOPT;
-	    goto done;
-	}
+    code = calc_sockpath(server_type, &path);
+    if (code != 0) {
+	goto done;
     }
 
     sock = socket(AF_UNIX, SOCK_STREAM | sock_cloexec, 0);

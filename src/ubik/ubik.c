@@ -16,6 +16,9 @@
 #include <rx/rx.h>
 #include <afs/cellconfig.h>
 #include <afs/afsutil.h>
+#ifdef AFS_PTHREAD_ENV
+# include <afs/afsctl.h>
+#endif
 
 
 #include "ubik_internal.h"
@@ -325,6 +328,125 @@ ContactQuorum_DISK_SetVersion(struct ubik_trans *atrans, int aflags,
 
 #if defined(AFS_PTHREAD_ENV)
 static int
+send_dbinfo(int code, struct afsctl_call *ctl, char *key, char *val)
+{
+    struct afsctl_pkt pkt;
+    struct ubikctl_dbinfo dbinfo;
+
+    memset(&pkt, 0, sizeof(pkt));
+    memset(&dbinfo, 0, sizeof(dbinfo));
+
+    if (code != 0) {
+	return code;
+    }
+
+    pkt.ptype = UBIKCTL_PKT_DBINFO;
+
+    if (key != NULL) {
+	dbinfo.key = key;
+	dbinfo.val = val;
+	pkt.u.ubikctl_dbinfo = &dbinfo;
+    }
+
+    return afsctl_send_pkt(ctl, &pkt);
+}
+
+static int
+uctl_dbinfo(struct afsctl_call *ctl)
+{
+    struct ubik_dbase *dbase = ubik_dbase;
+    char *dbtype = "flat";
+    char *engine = "udisk";
+    char *vers_str = NULL;
+    char *size_str = NULL;
+    char *path = NULL;
+    struct ubik_version version;
+    struct ubik_stat ustat;
+    int code;
+
+    memset(&version, 0, sizeof(version));
+    memset(&ustat, 0, sizeof(ustat));
+
+    DBHOLD(dbase);
+
+    code = uphys_getlabel(dbase, 0, &version);
+    if (code != 0) {
+	ViceLog(0, ("ubik: Error %d getting db label\n", code));
+	goto done_locked;
+    }
+
+    code = udb_path(dbase, NULL, &path);
+    if (code != 0) {
+	goto done_locked;
+    }
+
+    code = uphys_stat_path(path, &ustat);
+    if (code != 0) {
+	ViceLog(0, ("ubik: Error %d stating db\n", code));
+	goto done_locked;
+    }
+
+    DBRELE(dbase);
+
+    if (asprintf(&size_str, "%d", ustat.size) < 0) {
+	size_str = NULL;
+	goto enomem;
+    }
+
+    if (asprintf(&vers_str, "%d.%d", version.epoch, version.counter) < 0) {
+	vers_str = NULL;
+	goto enomem;
+    }
+
+    code = send_dbinfo(code, ctl, "type", dbtype);
+    code = send_dbinfo(code, ctl, "engine", engine);
+    code = send_dbinfo(code, ctl, "version", vers_str);
+    code = send_dbinfo(code, ctl, "size", size_str);
+    code = send_dbinfo(code, ctl, NULL, NULL);
+
+ done:
+    free(vers_str);
+    free(size_str);
+    free(path);
+    return code;
+
+ enomem:
+    code = UNOMEM;
+    goto done;
+
+ done_locked:
+    DBRELE(dbase);
+    goto done;
+}
+
+static int
+uctl_request(struct afsctl_call *ctl, struct afsctl_req_inargs *in_args,
+	     struct afsctl_req_outargs *out_args)
+{
+    switch (in_args->op) {
+    case UBIKCTL_OP_DBINFO:
+	return uctl_dbinfo(ctl);
+
+    default:
+	return ENOTSUP;
+    }
+}
+
+static void
+uctl_Init(struct ubik_serverinit_opts *opts)
+{
+    int code;
+    if (opts->ctl_server != NULL) {
+	code = afsctl_server_reg(opts->ctl_server, UBIKCTL_OP_PREFIX,
+				 uctl_request);
+	if (code != 0) {
+	    ViceLog(0, ("ubik: Failed to register ubik ctl ops (error %d); ctl "
+		    "functionality will be unavailable.\n", code));
+	}
+    }
+}
+
+static int
 ubik_thread_create(pthread_attr_t *tattr, pthread_t *thread, void *proc) {
     opr_Verify(pthread_attr_init(tattr) == 0);
     opr_Verify(pthread_attr_setdetachstate(tattr,
@@ -332,7 +454,7 @@ ubik_thread_create(pthread_attr_t *tattr, pthread_t *thread, void *proc) {
     opr_Verify(pthread_create(thread, tattr, proc, NULL) == 0);
     return 0;
 }
-#endif
+#endif /* AFS_PTHREAD_ENV */
 
 static void
 init_locks(struct ubik_dbase *dbase)
@@ -486,14 +608,19 @@ ubik_ServerInitByOpts(struct ubik_serverinit_opts *opts,
 #ifdef AFS_PTHREAD_ENV
     ubik_thread_create(&urecovery_Interact_tattr, &urecovery_InteractThread,
 		(void *)urecovery_Interact);
-    return 0;  /* is this correct?  - klm */
 #else
     code = LWP_CreateProcess(urecovery_Interact, 16384 /*8192 */ ,
 			     LWP_MAX_PRIORITY - 1, (void *)0, "recovery",
 			     &junk);
-    return code;
+    if (code)
+	return code;
 #endif
 
+#ifdef AFS_PTHREAD_ENV
+    uctl_Init(opts);
+#endif
+
+    return 0;
 }
 
 /*!

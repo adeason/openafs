@@ -4,13 +4,20 @@ include @TOP_OBJDIR@/src/config/Makefile.pthread
 include @TOP_OBJDIR@/src/config/Makefile.libtool
 
 LT_objs = afsctl_int.xdr.lo ctl_client.lo ctl_common.lo ctl_server.lo ctl_xdr.lo
-LT_deps = $(top_builddir)/src/util/liboafs_util.la
+LT_deps = $(top_builddir)/src/util/liboafs_util.la \
+	  $(top_builddir)/src/rx/liboafs_rx.la
 LT_libs = $(LIB_roken)
+
+OAFS_CTL_LIBS = liboafs_ctl.la \
+		$(top_builddir)/src/cmd/liboafs_cmd.la \
+		$(top_builddir)/src/opr/liboafs_opr.la \
+		$(top_builddir)/src/ubik/liboafs_ubik.la \
+		$(LIB_roken)
 
 HEADERS = $(TOP_INCDIR)/afs/afsctl.h \
 	  $(TOP_INCDIR)/afs/afsctl_int.h
 
-all: lib
+all: openafs-ctl lib
 lib: $(HEADERS) liboafs_ctl.la
 
 $(LT_objs): $(HEADERS)
@@ -30,12 +37,19 @@ afsctl_int.h: afsctl_int.xg
 afsctl_int.xdr.c: afsctl_int.xg
 	$(RXGEN) -A -b -c -o $@ $(srcdir)/afsctl_int.xg
 
+openafs-ctl: ctl_main.o lib
+	$(LT_LDRULE_static) ctl_main.o $(OAFS_CTL_LIBS)
+
 generated: afsctl_int.h afsctl_int.xdr.c
 
 clean:
 	$(LT_CLEAN)
-	$(RM) -f *.o afsctl_int.h afsctl_int.xdr.c
+	$(RM) -f *.o afsctl_int.h afsctl_int.xdr.c openafs-ctl
 
 install: all
+	$(INSTALL) -d $(DESTDIR)$(sbindir)
+	$(INSTALL_PROGRAM) openafs-ctl $(DESTDIR)$(sbindir)/openafs-ctl
 
 dest: all
+	$(INSTALL) -d $(DEST)/etc
+	$(INSTALL_PROGRAM) openafs-ctl $(DEST)/etc/openafs-ctl

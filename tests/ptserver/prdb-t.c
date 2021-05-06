@@ -32,6 +32,28 @@
 #include "common.h"
 #include "prtest.h"
 
+static char *ctl_path;
+
+static void
+run_dbinfo(struct ubiktest_cbinfo *cbinfo, struct ubiktest_ops *ops)
+{
+    struct afstest_cmdinfo cmdinfo;
+
+    memset(&cmdinfo, 0, sizeof(cmdinfo));
+
+    cmdinfo.output = "ptdb database info:\n"
+		     "  type: flat\n"
+		     "  engine: udisk\n"
+		     "  version: 1616893943.2\n"
+		     "  size: 66944\n";
+    cmdinfo.fd = STDOUT_FILENO;
+    cmdinfo.command = afstest_asprintf("%s ptdb-info -ctl-socket %s", ctl_path,
+				       cbinfo->ctl_sock);
+    is_command(&cmdinfo, "openafs-ctl ptdb-info output matches");
+
+    free(cmdinfo.command);
+}
+
 static struct ubiktest_ops scenarios[] = {
     {
 	.descr = "created prdb",
@@ -40,6 +62,7 @@ static struct ubiktest_ops scenarios[] = {
     {
 	.descr = "existing prdb",
 	.use_db = "prdb0",
+	.post_start = run_dbinfo,
     },
     {0}
 };
@@ -49,7 +72,9 @@ main(int argc, char **argv)
 {
     prtest_init(argv);
 
-    plan(60);
+    plan(61);
+
+    ctl_path = afstest_obj_path("src/ctl/openafs-ctl");
 
     ubiktest_runtest_list(&prtiny, scenarios);
 

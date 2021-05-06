@@ -19,6 +19,7 @@
 
 struct afstest_server_type afstest_server_pt = {
     .logname = "PtLog",
+    .ctl_sock = "pt.ctl.sock",
     .bin_path = "src/tptserver/ptserver",
     .db_name = "prdb",
     .exec_name = "ptserver",
@@ -29,6 +30,7 @@ struct afstest_server_type afstest_server_pt = {
 
 struct afstest_server_type afstest_server_vl = {
     .logname = "VLLog",
+    .ctl_sock = "vl.ctl.sock",
     .bin_path = "src/tvlserver/vlserver",
     .db_name = "vldb",
     .exec_name = "vlserver",
@@ -93,6 +95,7 @@ afstest_StartServer(struct afstest_server_type *server, char *dirname, pid_t *se
 {
     pid_t pid;
     char *logPath;
+    char *sock_path;
     int started = 0;
     int stopped = 0;
     int try;
@@ -100,6 +103,7 @@ afstest_StartServer(struct afstest_server_type *server, char *dirname, pid_t *se
     int code = 0;
 
     logPath = afstest_asprintf("%s/%s", dirname, server->logname);
+    sock_path = afstest_asprintf("%s/%s", dirname, server->ctl_sock);
 
     /* Create/truncate the log in advance (since we look at it to detect when
      * the server has started). */
@@ -119,7 +123,8 @@ afstest_StartServer(struct afstest_server_type *server, char *dirname, pid_t *se
 	dbPath = afstest_asprintf("%s/%s", dirname, server->db_name);
 
 	execl(binPath, server->exec_name,
-	      "-logfile", logPath, "-database", dbPath, "-config", dirname, NULL);
+	      "-logfile", logPath, "-database", dbPath, "-config", dirname,
+	      "-ctl-socket", sock_path, (char*)NULL);
 	fprintf(stderr, "Running %s failed\n", binPath);
 	exit(1);
     }
@@ -159,6 +164,7 @@ afstest_StartServer(struct afstest_server_type *server, char *dirname, pid_t *se
     *serverPid = pid;
 
     free(logPath);
+    free(sock_path);
 
     return code;
 }

@@ -24,9 +24,12 @@
 
 const AFSCTL_PATH_MAX = 1024;
 
+const UBIKCTL_OP_PREFIX = 0x75000000;
 const TESTCTL_OP_PREFIX = 0x007E0000;
 
 enum afsctl_req_op {
+    UBIKCTL_OP_DBINFO	= 0x75000001,
+
     TESTCTL_OP_NOARG	= 0x007E0001,
     TESTCTL_OP_ONLYIN	= 0x007E0002,
     TESTCTL_OP_ONLYOUT	= 0x007E0003,
@@ -41,6 +44,9 @@ struct testctl_inargs_hang {
 };
 
 union afsctl_req_inargs switch (afsctl_req_op op) {
+    case UBIKCTL_OP_DBINFO:
+	void;
+
     case TESTCTL_OP_NOARG:
 	void;
     case TESTCTL_OP_ONLYIN:
@@ -74,11 +80,18 @@ struct afsctl_pkt_chello {
     struct afsctl_req_inargs in_args;
 };
 
+struct ubikctl_dbinfo {
+    string key<AFSCTL_MSG_MAX>;
+    string val<AFSCTL_MSG_MAX>;
+};
+
 enum afsctl_pkt_type {
     AFSCTL_PKT_ABORT	= 0x00430001,
     AFSCTL_PKT_SHELLO	= 0x00430002,
     AFSCTL_PKT_CHELLO	= 0x00430003,
     AFSCTL_PKT_SBYE	= 0x00430004,
+
+    UBIKCTL_PKT_DBINFO	= 0x55000001,
 
     TESTCTL_PKT_HANG	= 0x005E0001
 };
@@ -120,6 +133,9 @@ union afsctl_pkt switch (afsctl_pkt_type ptype) {
 
     case AFSCTL_PKT_SBYE:
 	struct afsctl_req_outargs out_args;
+
+    case UBIKCTL_PKT_DBINFO:
+	struct ubikctl_dbinfo *ubikctl_dbinfo;
 
     case TESTCTL_PKT_HANG:
 	string testctl_hang<AFSCTL_PATH_MAX>;

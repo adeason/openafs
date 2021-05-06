@@ -36,8 +36,12 @@
 #include <afs/audit.h>
 #include <afs/com_err.h>
 #include <lock.h>
-#include <ubik.h>
+#include <ubik_np.h>
 #include <afs/afsutil.h>
+
+#ifdef AFS_PTHREAD_ENV
+# include <afs/afsctl.h>
+#endif
 
 #include "vlserver.h"
 #include "vlserver_internal.h"
@@ -159,7 +163,8 @@ enum optionsList {
     OPT_dotted,
     OPT_restricted_query,
     OPT_transarc_logs,
-    OPT_s2s_crypt
+    OPT_s2s_crypt,
+    OPT_ctl_socket
 };
 
 int
@@ -183,6 +188,7 @@ main(int argc, char **argv)
     struct logOptions logopts;
     int s2s_rxgk = 0;
     struct afsconf_bsso_info bsso;
+    struct ubik_serverinit_opts u_opts;
 
     char *vl_dbaseName;
     char *configDir;
@@ -191,6 +197,10 @@ main(int argc, char **argv)
     char *auditIface = NULL;
     char *optstring = NULL;
     char *s2s_crypt_behavior = NULL;
+#ifdef AFS_PTHREAD_ENV
+    struct afsctl_serverinfo ctl_sinfo;
+    struct afsctl_server *ctl_server = NULL;
+#endif
 
     char *restricted_query_parameter = NULL;
 
@@ -214,6 +224,11 @@ main(int argc, char **argv)
 
     memset(&logopts, 0, sizeof(logopts));
     memset(&bsso, 0, sizeof(bsso));
+    memset(&u_opts, 0, sizeof(u_opts));
+
+#ifdef AFS_PTHREAD_ENV
+    memset(&ctl_sinfo, 0, sizeof(ctl_sinfo));
+#endif
 
     setprogname(argv[0]);
 
@@ -262,6 +277,11 @@ main(int argc, char **argv)
 #endif
     cmd_AddParmAtOffset(opts, OPT_transarc_logs, "-transarc-logs", CMD_FLAG,
 			CMD_OPTIONAL, "enable Transarc style logging");
+
+#ifdef AFS_PTHREAD_ENV
+    cmd_AddParmAtOffset(opts, OPT_ctl_socket, "-ctl-socket", CMD_SINGLE, CMD_OPTIONAL,
+			"path to ctl socket");
+#endif
 
     /* rx options */
     cmd_AddParmAtOffset(opts, OPT_peer, "-enable_peer_stats", CMD_FLAG,
@@ -320,6 +340,10 @@ main(int argc, char **argv)
     cmd_OptionAsList(opts, OPT_auditlog, &auditLogList);
 
     cmd_OptionAsString(opts, OPT_database, &vl_dbaseName);
+
+#ifdef AFS_PTHREAD_ENV
+    cmd_OptionAsString(opts, OPT_ctl_socket, &ctl_sinfo.sock_path);
+#endif
 
     if (cmd_OptionAsInt(opts, OPT_threads, &lwps) == 0) {
 	if (lwps > MAXLWP) {
@@ -508,6 +532,16 @@ main(int argc, char **argv)
     }
     rx_SetRxDeadTime(50);
 
+#ifdef AFS_PTHREAD_ENV
+    ctl_sinfo.server_type = AFSCONF_VLDBPORT;
+    code = afsctl_server_create(&ctl_sinfo, &ctl_server);
+    if (code != 0) {
+	VLog(0, ("vlserver: afsctl init failed: %d\n", code));
+	exit(1);
+    }
+    u_opts.ctl_server = ctl_server;
+#endif /* AFS_PTHREAD_ENV */
+
     ubik_nBuffers = 512;
     if (s2s_rxgk) {
 	ubik_SetClientSecurityProcs(afsconf_ClientAuthRXGKCrypt,
@@ -519,15 +553,29 @@ main(int argc, char **argv)
 				afsconf_CheckAuth, tdir);
 
     ubik_SyncWriterCacheProc = vlsynccache;
-    code =
-	ubik_ServerInitByInfo(myHost, htons(AFSCONF_VLDBPORT), &info, clones,
-			      vl_dbaseName, &VL_dbase);
+
+    u_opts.myHost = myHost;
+    u_opts.myPort = htons(AFSCONF_VLDBPORT);
+    u_opts.info = &info;
+    u_opts.clones = clones;
+    u_opts.pathName = vl_dbaseName;
+
+    code = ubik_ServerInitByOpts(&u_opts, &VL_dbase);
     if (code) {
 	VLog(0, ("vlserver: Ubik init failed: %s\n", afs_error_message(code)));
 	exit(2);
     }
 
     initialize_dstats();
+
+#ifdef AFS_PTHREAD_ENV
+    code = afsctl_server_listen(ctl_server);
+    if (code != 0) {
+	VLog(0, ("vlserver: afsctl listen failed (error %d). Startup will "
+		 "continue, but ctl functionality will be disabled\n", code));
+	code = 0;
+    }
+#endif /* AFS_PTHREAD_ENV */
 
     bsso.dir = tdir;
     bsso.logger = FSLog;

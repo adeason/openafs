@@ -57,6 +57,9 @@ struct ubik_serverinit_opts {
 
     /* Initial prefix used for naming storage files used by this system. */
     const char *pathName;
+
+    /* ctl server instance to register our ubik ctl ops (optional) */
+    struct afsctl_server *ctl_server;
 };
 
 int ubik_ServerInitByOpts(struct ubik_serverinit_opts *opts,
@@ -81,5 +84,14 @@ int ubik_RawSetVersion(struct ubik_trans *trans, struct ubik_version *version);
 typedef void (*ubik_writehook_func)(struct ubik_dbase *tdb, afs_int32 fno,
 				    void *bp, afs_int32 pos, afs_int32 count);
 int ubik_InstallWriteHook(ubik_writehook_func func);
+
+/*** ubik_ctl.c ***/
+
+struct ubikctl_info {
+    char *cmd_prefix;
+    char *db_descr;
+    afs_uint32 server_type;
+};
+int ubikctl_CreateSyntax(struct ubikctl_info *info);
 
 #endif /* OPENAFS_UBIK_UBIK_NP_H */
