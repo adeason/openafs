@@ -328,6 +328,7 @@ ${LINUX_LIBAFS_NAME}.ko afspag.ko: .FORCE
 		exit 1 ; \
 	fi
 	rm .makelog
+	$(MAKE) -f @abs_srcdir@/Makefile.printdeps ABS_KDIR=@TOP_OBJDIR@/src/libafs/${KDIR} SRCDIR=@abs_srcdir@ TOP_SRCDIR=@TOP_SRCDIR@ TOP_OBJDIR=@TOP_OBJDIR@ LINUX_KERNEL_BUILD=${LINUX_KERNEL_BUILD} DEP_PATH=@TOP_OBJDIR@/src/libafs/printdeps printdeps
 
 <all -linux26 -linux_26 -umlinux26>
 ${LIBAFS}: $(AFSAOBJS) $(AFSNONFSOBJS)

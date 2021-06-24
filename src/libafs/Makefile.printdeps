@@ -1,0 +1,25 @@
+include $(ABS_KDIR)/.*.cmd
+include $(ABS_KDIR)/Makefile.afs
+
+ALL_OBJS = $(AFSAOBJS) $(AFSPAGOBJS)
+
+# translate afs_cell.o into /objdir/MODLOAD-*/afs_cell.o for each object in
+# AFSAOBJS and AFSPAGOBJS
+ABS_OBJS = $(foreach obj,$(ALL_OBJS),$(ABS_KDIR)/$(obj))
+
+# get the deps from each object file, by looking at
+# $(deps_/objdir/MODLOAD-*/afs_cell.o) for each obj (defined in
+# /objdir/MODLOAD-*/.afs_cell.o.cmd, included above)
+DEPS = $(foreach obj,$(ABS_OBJS),$(deps_$(obj)))
+
+# only look at deps that are from our tree
+DEPS_OURS = $(filter $(TOP_SRCDIR)/% $(TOP_OBJDIR)/%,$(DEPS))
+
+SRCS = $(patsubst %.o,%.c,$(ALL_OBJS))
+
+printdeps:
+	cd $(LINUX_KERNEL_BUILD) && \
+		echo sources: $(file >$(DEP_PATH).srcs,$(SRCS)) && \
+		tr ' ' '\n' < $(DEP_PATH).srcs | sort | uniq && \
+		echo deps: $(file >$(DEP_PATH).deps,$(DEPS_OURS)) && \
+		tr ' ' '\n' < $(DEP_PATH).deps | sort | uniq
