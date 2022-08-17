@@ -109,6 +109,58 @@ opr_time64_cmp(struct afs_time64 *t1, struct afs_time64 *t2)
     return 0;
 }
 
+/**
+ * Add an afs_time64 to another afs_time64. in := in + add
+ *
+ * @param[inout] in One of the times to add, and where the result is
+ *		    stored.
+ * @param[in] add   The other time to add.
+ *
+ * @retval ERANGE The result is too big or small to represent in afs_time64.
+ */
+static_inline int
+opr_time64_add(struct afs_time64 *in, const struct afs_time64 *add)
+{
+    if (in->clunks > 0 && add->clunks > 0) {
+	if (in->clunks > MAX_AFS_INT64 - add->clunks) {
+	    return ERANGE;
+	}
+    }
+    if (in->clunks < 0 && add->clunks < 0) {
+	if (in->clunks < MIN_AFS_INT64 - add->clunks) {
+	    return ERANGE;
+	}
+    }
+    in->clunks += add->clunks;
+    return 0;
+}
+
+/**
+ * Add seconds to an afs_time64. in := in + add_secs
+ *
+ * This is merely a convenience function to use instead of needing to call
+ * opr_time64_fromSecs() and then opr_time64_add().
+ *
+ * @param[inout] in One of the times to add, and where the result is
+ *		    stored.
+ * @param[in] add_secs	The number of seconds to add to 'in'.
+ *
+ * @retval ERANGE The result is too big or small to represent in afs_time64.
+ */
+static_inline int
+opr_time64_addSecs(struct afs_time64 *in, afs_int64 add_secs)
+{
+    struct afs_time64 add;
+    int code;
+
+    code = opr_time64_fromSecs(add_secs, &add);
+    if (code != 0) {
+	return code;
+    }
+
+    return opr_time64_add(in, &add);
+}
+
 static_inline int
 opr_time64_now(struct afs_time64 *out)
 {
