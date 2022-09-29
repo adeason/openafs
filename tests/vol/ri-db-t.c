@@ -24,7 +24,7 @@
 
 #include <afsconfig.h>
 #include <afs/param.h>
-#include "src/vol/ri-db.h"
+#include "ri-db.h"
 #include "common.h"
 
 static char *prefix;
