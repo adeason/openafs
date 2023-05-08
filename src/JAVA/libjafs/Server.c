@@ -1323,7 +1323,7 @@ Java_org_openafs_jafs_Server_setRestartTime (JNIEnv *env, jclass cls,
   doNever = (*env)->GetBooleanField(env, exectime, neverField );
   doNow = (*env)->GetBooleanField(env, exectime, nowField );
 
-  bzero(&time, sizeof(time));
+  memset(&time, 0, sizeof(time));
 
   if( jtype == org_openafs_jafs_Server_RESTART_BINARY ) {
     type = BOS_RESTART_DAILY;
