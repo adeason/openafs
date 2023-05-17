@@ -377,13 +377,34 @@ case $AFS_SYSNAME in
 		TSM_LIBS="-lsys -lcsys -lc"
 		;;
 
-	rs_aix61 | rs_aix7*)
+	rs_aix61 | rs_aix71)
 		CC="cc"
 		DBG="-g"
 		LIBSYS_AIX_EXP="afsl.exp"
 		MT_CC="xlc_r"
 		SHLIB_SUFFIX="o"
 		XCFLAGS="-K -D_NONSTD_TYPES -D_MBI=void"
+		XLIBS="${LIB_AFSDB} ${LIB_libintl} -ldl"
+		SHLIB_LINKER="${MT_CC} -bM:SRE -berok"
+		AIX32="no"
+		AIX64="yes"
+		TSM_IMPORTS="-bI:/lib/aio.exp -bI:/lib/netinet.exp -bI:/lib/sockets.exp -bI:/lib/statcmd.exp"
+		TSM_LIBS="-lsys -lcsys -lc"
+		;;
+
+	rs_aix7*)
+		if test -e `which ibm-clang` ; then
+			# Open XL C 17.1+ on AIX 7.2+
+			CC="ibm-clang"
+			MT_CC="$CC"
+			XLDFLAGS="-Wl,-K"
+		else
+			# XL C 16.1 or earlier
+			CC="cc"
+			MT_CC="xlc_r"
+			XCFLAGS="-K -D_NONSTD_TYPES -D_MBI=void"
+		fi
+		SHLIB_SUFFIX="o"
 		XLIBS="${LIB_AFSDB} ${LIB_libintl} -ldl"
 		SHLIB_LINKER="${MT_CC} -bM:SRE -berok"
 		AIX32="no"
