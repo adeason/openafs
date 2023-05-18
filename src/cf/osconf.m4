@@ -354,6 +354,7 @@ case $AFS_SYSNAME in
 		MT_CC="xlc_r"
 		SHLIB_SUFFIX="o"
 		XCFLAGS="-K -D_NONSTD_TYPES -D_MBI=void"
+		XCFLAGS64=-q64
 		XLIBS="${LIB_AFSDB} ${LIB_libintl} -ldl"
 		SHLIB_LINKER="${MT_CC} -bM:SRE -berok"
 		AIX32="yes"
@@ -369,6 +370,7 @@ case $AFS_SYSNAME in
 		MT_CC="xlc_r"
 		SHLIB_SUFFIX="o"
 		XCFLAGS="-K -D_NONSTD_TYPES -D_MBI=void"
+		XCFLAGS64=-q64
 		XLIBS="${LIB_AFSDB} ${LIB_libintl} -ldl"
 		SHLIB_LINKER="${MT_CC} -bM:SRE -berok"
 		AIX32="yes"
@@ -384,6 +386,7 @@ case $AFS_SYSNAME in
 		MT_CC="xlc_r"
 		SHLIB_SUFFIX="o"
 		XCFLAGS="-K -D_NONSTD_TYPES -D_MBI=void"
+		XCFLAGS64=-q64
 		XLIBS="${LIB_AFSDB} ${LIB_libintl} -ldl"
 		SHLIB_LINKER="${MT_CC} -bM:SRE -berok"
 		AIX32="no"
@@ -397,12 +400,14 @@ case $AFS_SYSNAME in
 			# Open XL C 17.1+ on AIX 7.2+
 			CC="ibm-clang"
 			MT_CC="$CC"
+			XCFLAGS64=-m64
 			XLDFLAGS="-Wl,-K"
 		else
 			# XL C 16.1 or earlier
 			CC="cc"
 			MT_CC="xlc_r"
 			XCFLAGS="-K -D_NONSTD_TYPES -D_MBI=void"
+			XCFLAGS64=-q64
 		fi
 		SHLIB_SUFFIX="o"
 		XLIBS="${LIB_AFSDB} ${LIB_libintl} -ldl"
