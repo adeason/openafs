@@ -138,4 +138,8 @@ int     lpioctl(char *path, int cmd, void *cmarg, int follow);
 
 #endif /* AFS_NT40_ENV */
 
+#ifdef AFS_AIX_ENV
+extern int syscall(int, ...);
+#endif
+
 #endif /* AFS_AFSSYSCALLS_H */
