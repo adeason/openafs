@@ -119,7 +119,7 @@ rxgk_NewServerConnection(struct rx_securityClass *aobj,
     return 0;
 
  error:
-    return RXGK_INCONSISTENCY;
+    return rxgk_misc_error();
 }
 
 static int
@@ -160,7 +160,7 @@ rxgk_ServerPreparePacket(struct rx_securityClass *aobj, struct rx_call *acall,
 
     code = opr_time64_now(&now);
     if (code != 0)
-	return RXGK_INCONSISTENCY;
+	return rxgk_misc_error();
 
     if (is_expired(&now, &sc->expiration))
 	return RXGK_EXPIRED;
@@ -188,7 +188,7 @@ rxgk_ServerPreparePacket(struct rx_securityClass *aobj, struct rx_call *acall,
 	    ret = rxgk_enc_packet(tk, RXGK_SERVER_ENC_PACKET, aconn, apacket);
 	    break;
 	default:
-	    ret = RXGK_INCONSISTENCY;
+	    ret = rxgk_misc_error();
 	    break;
     }
 
@@ -205,7 +205,7 @@ rxgk_CheckAuthentication(struct rx_securityClass *aobj,
 
     sc = rx_GetSecurityData(aconn);
     if (sc == NULL)
-	return RXGK_INCONSISTENCY;
+	return rxgk_misc_error();
 
     if (sc->auth == 0)
 	return RXGK_NOTAUTH;
@@ -224,12 +224,12 @@ rxgk_CreateChallenge(struct rx_securityClass *aobj,
 
     sc = rx_GetSecurityData(aconn);
     if (sc == NULL)
-	return RXGK_INCONSISTENCY;
+	return rxgk_misc_error();
     sc->auth = 0;
 
     /* The challenge is a 20-byte random nonce. */
     if (rxgk_nonce(&buf, RXGK_CHALLENGE_NONCE_LEN) != 0)
-	return RXGK_INCONSISTENCY;
+	return rxgk_misc_error();
 
     opr_Assert(buf.len == RXGK_CHALLENGE_NONCE_LEN);
     memcpy(&sc->challenge, buf.val, RXGK_CHALLENGE_NONCE_LEN);
@@ -249,10 +249,10 @@ read_challenge(struct rxgk_sconn *sc, void *buf, int len)
     opr_StaticAssert(sizeof(sc->challenge) == RXGK_CHALLENGE_NONCE_LEN);
 
     if (len != RXGK_CHALLENGE_NONCE_LEN) {
-	return RXGK_INCONSISTENCY;
+	return rxgk_misc_error();
     }
     if (!sc->challenge_valid) {
-	return RXGK_INCONSISTENCY;
+	return rxgk_misc_error();
     }
     memcpy(buf, sc->challenge, RXGK_CHALLENGE_NONCE_LEN);
     return 0;
@@ -276,7 +276,7 @@ rxgk_GetChallenge(struct rx_securityClass *aobj, struct rx_connection *aconn,
 
     sc = rx_GetSecurityData(aconn);
     if (sc == NULL) {
-	ret = RXGK_INCONSISTENCY;
+	ret = rxgk_misc_error();
 	goto done;
     }
     ret = read_challenge(sc, challenge.nonce, sizeof(challenge.nonce));
@@ -285,20 +285,20 @@ rxgk_GetChallenge(struct rx_securityClass *aobj, struct rx_connection *aconn,
 
     xdrlen_create(&xdrs);
     if (!xdr_RXGK_Challenge(&xdrs, &challenge)) {
-	ret = RXGEN_SS_MARSHAL;
+	ret = rxgk_int_error(RXGEN_SS_MARSHAL);
 	goto done;
     }
     len = xdr_getpos(&xdrs);
 
     data = rxi_Alloc(len);
     if (data == NULL) {
-	ret = RXGK_INCONSISTENCY;
+	ret = rxgk_misc_error();
 	goto done;
     }
     xdr_destroy(&xdrs);
     xdrmem_create(&xdrs, data, len, XDR_ENCODE);
     if (!xdr_RXGK_Challenge(&xdrs, &challenge)) {
-	ret = RXGEN_SS_MARSHAL;
+	ret = rxgk_int_error(RXGEN_SS_MARSHAL);
 	goto done;
     }
     opr_Assert(len <= 0xffffu);
@@ -349,7 +349,7 @@ prnames_to_identity(struct rx_identity **a_identity, PrAuthName *namelist,
 
     } else if (nnames > 1) {
 	/* Compound identities are not supported yet. */
-	return RXGK_INCONSISTENCY;
+	return rxgk_misc_error();
     }
 
     if (namelist[0].kind == PRAUTHTYPE_KRB4)
@@ -357,11 +357,11 @@ prnames_to_identity(struct rx_identity **a_identity, PrAuthName *namelist,
     else if (namelist[0].kind == PRAUTHTYPE_GSS)
 	kind = RX_ID_GSS;
     else
-	return RXGK_INCONSISTENCY;
+	return rxgk_misc_error();
     len = namelist[0].display.len;
     display = rxi_Alloc(len + 1);
     if (display == NULL)
-	return RXGK_INCONSISTENCY;
+	return rxgk_misc_error();
     memcpy(display, namelist[0].display.val, len);
     display[len] = '\0';
     *a_identity = rx_identity_new(kind, display, namelist[0].data.val,
@@ -452,7 +452,7 @@ decrypt_authenticator(RXGK_Authenticator *out, struct rx_opaque *in,
 
     xdrmem_create(&xdrs, packauth.val, packauth.len, XDR_DECODE);
     if (!xdr_RXGK_Authenticator(&xdrs, out)) {
-	ret = RXGEN_SS_UNMARSHAL;
+	ret = rxgk_int_error(RXGEN_SS_UNMARSHAL);
 	goto done;
     }
     ret = 0;
@@ -518,7 +518,7 @@ check_authenticator(RXGK_Authenticator *authenticator,
     /* XXX We do nothing with the appdata for now. */
 
     if (ct_memcmp(&auth_got, &auth_exp, sizeof(auth_got)) != 0) {
-	return RXGK_BADCHALLENGE;
+	return rxgk_int_error(RXGK_BADCHALLENGE);
     }
     return 0;
 }
@@ -557,7 +557,7 @@ rxgk_CheckResponse(struct rx_securityClass *aobj,
     xdrmem_create(&xdrs, rx_DataOf(apacket), rx_Contiguous(apacket),
 		  XDR_DECODE);
     if (!xdr_RXGK_Response(&xdrs, &response)) {
-	ret = RXGEN_SS_UNMARSHAL;
+	ret = rxgk_int_error(RXGEN_SS_UNMARSHAL);
 	goto done;
     }
 
@@ -568,7 +568,7 @@ rxgk_CheckResponse(struct rx_securityClass *aobj,
 
     code = opr_time64_now(&now);
     if (code != 0) {
-	ret = RXGK_INCONSISTENCY;
+	ret = rxgk_misc_error();
 	goto done;
     }
 
@@ -595,7 +595,7 @@ rxgk_CheckResponse(struct rx_securityClass *aobj,
     if (ret != 0)
 	goto done;
     if (rxi_SetCallNumberVector(aconn, (afs_int32 *)authenticator.call_numbers.val) != 0) {
-	ret = RXGK_INCONSISTENCY;
+	ret = rxgk_misc_error();
 	goto done;
     }
     /* Success! */
@@ -632,7 +632,7 @@ rxgk_ServerCheckPacket(struct rx_securityClass *aobj, struct rx_call *acall,
     aconn = rx_ConnectionOf(acall);
     sc = rx_GetSecurityData(aconn);
     if (sc == NULL)
-	return RXGK_INCONSISTENCY;
+	return rxgk_misc_error();
 
     len = rx_GetDataSize(apacket);
     sc->stats.precv++;
@@ -640,7 +640,7 @@ rxgk_ServerCheckPacket(struct rx_securityClass *aobj, struct rx_call *acall,
 
     code = opr_time64_now(&now);
     if (code != 0)
-	return RXGK_INCONSISTENCY;
+	return rxgk_misc_error();
 
     if (is_expired(&now, &sc->expiration))
 	return RXGK_EXPIRED;
@@ -726,11 +726,11 @@ rxgk_GetServerInfo(struct rx_connection *conn, RXGK_Level *level,
 
     sconn = rx_GetSecurityData(conn);
     if (sconn == NULL)
-	return RXGK_INCONSISTENCY;
+	return rxgk_misc_error();
     if (identity != NULL) {
 	*identity = rx_identity_copy(sconn->client);
 	if (*identity == NULL)
-	    return RXGK_INCONSISTENCY;
+	    return rxgk_misc_error();
     }
     if (level != NULL)
 	*level = sconn->level;
@@ -773,10 +773,13 @@ rxgk_NewServerSecurityObject(void *getkey_rock, rxgk_getkey_func getkey)
     struct rxgk_sprivate *sp;
 
     sc = rxi_Alloc(sizeof(*sc));
-    if (sc == NULL)
+    if (sc == NULL) {
+	rxgk_misc_error();
 	return NULL;
+    }
     sp = rxi_Alloc(sizeof(*sp));
     if (sp == NULL) {
+	rxgk_misc_error();
 	rxi_Free(sc, sizeof(*sc));
 	return NULL;
     }
