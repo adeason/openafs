@@ -1,0 +1,522 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<appendix id="RXGK">
+  <title>The rxgk security class</title>
+
+  <para>This chapter explains and describes how to set up the rxgk security
+  class, a new feature in OpenAFS. Note that rxgk support is currently
+  experimental and various options and behaviors are subject to change; this
+  chapter describes just the current implementation in OpenAFS as it exists
+  right now.</para>
+
+  <sect1 id="RXGK001">
+    <title>Background</title>
+
+    <para>Current releases of OpenAFS (versions 1.8.x and earlier) use the
+    rxkad security class for authenticated and encrypted network traffic. rxkad
+    is originally derived from krb4, with various additions and extensions to
+    allow it to be used with krb5 and non-DES long-term keys. But rxkad still
+    always uses a DES-based encryption algorithm called fcrypt on the wire,
+    with no way to specify other algorithms.</para>
+
+    <para>The rxgk security class is intended as the replacement for rxkad, and
+    is intended to be useable with any encryption supported by the underlying
+    platform. This offers better security, but also better performance, as
+    modern cryptography algorithms tend to be much faster, especially with
+    hardware acceleration.</para>
+
+    <para>The rxgk security class also has a number of other features and
+    improvements:
+      <itemizedlist>
+        <listitem>
+	  <para>It is not restricted to Kerberos; anything supporting the
+	  GSS-API can be used. However, OpenAFS currently only supports rxgk
+	  with krb5 for now.</para>
+	</listitem>
+        <listitem>
+	  <para>Fileservers can run with per-fileserver credentials, instead of
+	  every server needing to have the same cell-wide secret key in
+	  KeyFileExt. OpenAFS does not support this yet; all fileservers must
+	  have the cell-wide key in KeyFileExt.</para>
+	</listitem>
+        <listitem>
+	  <para>Client machines can have per-client credentials, which are used
+	  together with per-user credentials. This can allow you to use
+	  host-based access control that uses actual credentials, instead of
+	  the inconsistent IP-based "machine entries" in the ptdb. OpenAFS does
+	  not support this yet.</para>
+	</listitem>
+        <listitem>
+	  <para>Various other improvements related to security, stability, and
+	  performance that are not directly visible to an administrator.</para>
+	</listitem>
+      </itemizedlist>
+    </para>
+
+    <para>Even though OpenAFS does not support some of these features right
+    now, it can be helpful to know that they exist; so you know not to try to
+    use them, and so you know what may change in future releases.</para>
+
+    <para>rxgk also provides a way for a client to securely ask a vlserver
+    whether a fileserver supports rxgk or not. This allows for rxgk to be
+    deployed gradually in a cell, but it means that each fileserver must tell a
+    vlserver that it supports rxgk.</para>
+  </sect1>
+
+  <sect1 id="RXGK002">
+    <title>Building</title>
+
+    <para>When building OpenAFS, run
+    <emphasis role="bold">./configure</emphasis> with the flags
+    <emphasis role="bold">--enable-rxgk --enable-pthreaded-bos</emphasis>,
+    which will turn on rxgk for all components. You will need GSS headers and
+    libraries installed, which may be separate packages from your krb5
+    libraries.</para>
+
+    <para>rxgk is tested most on Linux-based platforms with MIT krb5, but other
+    platforms should also work. If you encounter build issues, please let us
+    know.</para>
+
+    <para>Once binaries have been built, you can install them like normal. If
+    you have an existing rxkad-based setup, you can verify that everything
+    still works before proceeding with setting up rxgk.</para>
+  </sect1>
+
+  <sect1 id="RXGK003">
+    <title>Basic Localauth Setup</title>
+
+    <para>First, we'll setup the cell-wide rxgk secret key. This allows us to
+    use rxgk when using the <emphasis role="bold">-localauth</emphasis> option
+    for most commands, but server processes won't use this for internal
+    communication yet.</para>
+
+    <para>Run the following on a server to generate a random cell-wide secret
+    key with kvno 1 and store it in your
+    <emphasis role="bold">KeyFileExt</emphasis>:
+      <programlisting>
+# <emphasis role="bold">asetkey add-random rxgk 1</emphasis>
+Added random key with type 1 kvno 1 subtype 17
+      </programlisting>
+    </para>
+
+    <para>Distribute that <emphasis role="bold">KeyFileExt</emphasis> to all
+    servers in the cell, like normal. Remember to either restart the server
+    processes or <emphasis role="bold">touch CellServDB</emphasis> so the
+    server processes notice the updated
+    <emphasis role="bold">KeyFileExt</emphasis>.</para>
+
+    <para>Now we can check that <emphasis role="bold">-localauth</emphasis>
+    access works by running some commands. Run these commands with
+    <emphasis role="bold">-rxgk crypt</emphasis> to use rxgk, and make sure no
+    other error messages appear.</para>
+
+    <para>Verify that the key works with the ptserver:
+      <programlisting>
+# <emphasis role="bold">pts examine system:administrators -localauth -rxgk crypt</emphasis>
+Name: system:administrators, id: -204, owner: system:administrators, creator: system:administrators,
+  membership: 1, flags: S-M--, group quota: unlimited.
+      </programlisting>
+    </para>
+
+    <para>If you see an error message like <emphasis role="bold">Could not get
+    afs tokens, running unauthenticated</emphasis>, then something is
+    wrong.</para>
+
+    <para>Verify that the key works with the vlserver:
+      <programlisting>
+# <emphasis role="bold">vos listvldb root.cell -localauth -rxgk crypt</emphasis>
+
+root.cell
+    RWrite: 536870912     ROnly: 536870913     Backup: 536870914
+    number of sites -> 2
+       server fs1.example.com partition /vicepa RW Site
+       server fs1.example.com partition /vicepa RO Site
+      </programlisting>
+    </para>
+
+    <para>If you see an error message like <emphasis role="bold">Could not get
+    afs tokens, running unauthenticated</emphasis>, then something is
+    wrong.</para>
+
+    <para>Verify that the key works with the volserver:
+      <programlisting>
+# <emphasis role="bold">vos listpart localhost -localauth -verbose -rxgk crypt -rxgk-novldb</emphasis>
+The partitions on the server are:
+    /vicepa     /vicepb
+Total: 2
+      </programlisting>
+    </para>
+
+    <para>If you see an error message like <emphasis role="bold">Could not get
+    afs tokens, running unauthenticated</emphasis>, then something is
+    wrong.</para>
+
+    <para>Note the use of the flag
+    <emphasis role="bold">-rxgk-novldb</emphasis>. This tells
+    <emphasis role="bold">vos</emphasis> to not negotiate per-server rxgk
+    tokens from the VLDB. We use this flag because we haven't setup the VLDB
+    for rxgk yet; later on, after the VLDB is setup, you won't need to use that
+    flag anymore.</para>
+
+    <para>Verify that the key works with the bosserver:
+      <programlisting>
+# <emphasis role="bold">bos status localhost -localauth -rxgk crypt -rxgk-cellwide</emphasis>
+Instance ptserver, currently running normally.
+Instance vlserver, currently running normally.
+Instance dafs, currently running normally.
+    Auxiliary status is: file server running.
+      </programlisting>
+    </para>
+
+    <para>If you see an error message like <emphasis role="bold">bos: running
+    unauthenticated</emphasis>, then something is wrong.</para>
+
+    <para>Note the use of the flag
+    <emphasis role="bold">-rxgk-cellwide</emphasis>. This tells
+<emphasis role="bold">bos</emphasis> to use the rxgk cell-wide key from
+    <emphasis role="bold">KeyFileExt</emphasis> instead of GSS authentication,
+    since we haven't configured bosserver GSS credentials yet. Later on, after
+    GSS credentials have been configured, you don't need to use that flag
+    anymore.</para>
+
+    <para>You can also run privileged commands to prove that you are
+    authenticated as an administrator. For example,
+    <emphasis role="bold">pts createuser</emphasis> or
+    <emphasis role="bold">vos create</emphasis>.</para>
+  </sect1>
+
+  <sect1 id="RXGK004">
+    <title>Server-to-server Localauth Setup</title>
+
+    <para>At this point, the server processes are still using rxkad to talk to
+    the other servers. To use rxgk for server-to-server traffic, give the
+    option <emphasis role="bold">-s2scrypt rxgk-crypt</emphasis> to the
+    ptserver, vlserver, and fileserver.</para>
+
+    <para>Doing this for the ptserver and vlserver is optional (but
+    recommended, of course, to get the benefits of rxgk), and meaningless if
+    you only have one dbserver in the cell. Doing this for the fileserver is
+    required for clients to be able to use rxgk for that fileserver, since this
+    is how the vlserver knows whether a fileserver supports rxgk or not.</para>
+
+    <para>To do this, issue the <emphasis role="bold">bos delete</emphasis> and
+    <emphasis role="bold">bos create</emphasis> commands to recreate the
+    relevant bnodes. See <link linkend="HDRWQ52">Starting the Database Server
+    Processes</link> or "Creating and Removing Processes" in the Admin
+    Guide. This can be done one server (or one process) at a time, or the whole
+    cell at once.</para>
+
+    <para>For example, you should see something like this after the relevant
+    flags have been added:
+      <programlisting>
+# <emphasis role="bold">bos status localhost -long -localauth -rxgk crypt -rxgk-cellwide</emphasis>
+Instance ptserver, (type is simple) currently running normally.
+    Process last started at Sat May 11 23:44:44 2024 (1 proc starts)
+    Command 1 is '/usr/afs/bin/ptserver -s2scrypt rxgk-crypt'
+
+Instance vlserver, (type is simple) currently running normally.
+    Process last started at Sat May 11 23:44:44 2024 (1 proc starts)
+    Command 1 is '/usr/afs/bin/vlserver -s2scrypt rxgk-crypt'
+
+Instance dafs, (type is dafs) currently running normally.
+    Auxiliary status is: file server running.
+    Process last started at Sat May 11 23:44:44 2024 (3 proc starts)
+    Command 1 is '/usr/afs/bin/dafileserver -s2scrypt rxgk-crypt'
+    Command 2 is '/usr/afs/bin/davolserver'
+    Command 3 is '/usr/afs/bin/salvageserver'
+    Command 4 is '/usr/afs/bin/dasalvager'
+      </programlisting>
+    </para>
+
+    <para>To check that server processes are actually using rxgk for
+    server-to-server traffic, you can use
+    <emphasis role="bold">rxdebug</emphasis> and see what security class is
+    being used for the client connections to other servers.</para>
+
+    <para>For example, for the ptserver:
+      <programlisting>
+# <emphasis role="bold">rxdebug localhost 7002 -onlyclient -allconnections</emphasis>
+Connection from host 192.0.2.10, port 7002, Cuid d34db33f/deadbeef
+  serial 3,  natMTU 1444, security index 4, client conn
+  rxgk: level crypt
+[...]
+      </programlisting>
+    </para>
+
+    <para>The "security index 4" and "rxgk: level crypt" shows that the
+    connection is using rxgk. In this example, 192.0.2.10 is another
+    ptserver.</para>
+
+    <para>Do this for the ptserver (port 7002), vlserver (port 7003), and
+    fileserver (port 7000), to verify that rxgk is being used. The ptserver
+    will talk to other ptservers, the vlserver will talk to other vlservers,
+    and the fileserver will talk to vlservers and ptservers.</para>
+
+    <para>If the fileserver is able to successfully contact the vlserver over
+    rxgk, you should also see this message in VLLog:
+      <programlisting>
+Thu Apr 11 18:12:51 2024 Flagging fileserver 0010bf8a-4cfe-1d8e-a8-16-e71011acaa77 in the VLDB as supporting rxgk with the cell-wide key.
+      </programlisting>
+    </para>
+
+    <para>At this point, you can also run <emphasis role="bold">vos</emphasis>
+    without the flag <emphasis role="bold">-rxgk-novldb</emphasis>. This causes
+    vos to use per-server rxgk credentials instead of using the cell-wide rxgk
+    key. This currently doesn't matter much because OpenAFS doesn't support
+    per-server keys, but it's useful for testing.</para>
+
+    <para>For example:
+      <programlisting>
+# <emphasis role="bold">vos listpart localhost -localauth -verbose -rxgk crypt</emphasis>
+Getting rxgk creds for volserver uuid 0010bf8a-4cfe-1d8e-a8-16-e71011acaa77... done.
+The partitions on the server are:
+    /vicepa     /vicepb
+Total: 2
+      </programlisting>
+    </para>
+  </sect1>
+
+  <sect1 id="RXGK005">
+    <title>Client fileserver access with krb5</title>
+
+    <para>Now that rxgk is being used by the server processes internally, we
+    can setup rxgk to be used by users and clients to access the fileserver. To
+    do this, we create the krb5 principal
+    <emphasis role="bold">afs-rxgk/_afs.</emphasis>&lt;<replaceable>cell</replaceable>&gt;,
+    and extract a keytab for that principal to
+    <emphasis role="bold">/usr/afs/etc/rxgk.keytab</emphasis> on your
+    dbservers.</para>
+
+    <para>However, note that clients may detect the existence of the
+    <emphasis role="bold">afs-rxgk/_afs.</emphasis>&lt;<replaceable>cell</replaceable>&gt;
+    principal as an indication that the cell supports rxgk. So, if you create
+    that principal on your KDC, clients may immediately think that the cell
+    supports rxgk, but using rxgk will fail until you distribute <emphasis
+    role="bold">rxgk.keytab</emphasis> to the vlservers. The instructions
+    provided here ignore this problem, but there are ways to avoid this. You
+    can generate the keytab before creating the principal on the KDC, or you
+    can create the principal on the KDC without allowing it to be used by
+    clients. See your KDC documentation for details, or you may find the
+    similar procedures in the OpenAFS document how-to-rekey.txt helpful.</para>
+
+    <para>Ignoring those issues, the first step is to create the krb5 principal
+    <emphasis role="bold">afs-rxgk/_afs.</emphasis>&lt;<replaceable>cell</replaceable>&gt;,
+    such as
+    <emphasis role="bold">afs-rxgk/_afs.example.com</emphasis>.</para>
+
+    <para>For example, with MIT krb5:
+      <programlisting>
+# <emphasis role="bold">kadmin.local</emphasis>
+kadmin.local: <emphasis role="bold">add_principal -randkey afs-rxgk/_afs.example.com</emphasis>
+Principal "afs-rxgk/_afs.example.com@EXAMPLE.COM" created.
+kadmin.local: <emphasis role="bold">ktadd -k /usr/afs/etc/rxgk.keytab -norandkey afs-rxgk/_afs.example.com</emphasis>
+Entry for principal afs-rxgk/_afs.example.com with kvno 1, encryption type aes256-cts-hmac-sha1-96 added to keytab WRFILE:/usr/afs/etc/rxgk.keytab.
+Entry for principal afs-rxgk/_afs.example.com with kvno 1, encryption type aes128-cts-hmac-sha1-96 added to keytab WRFILE:/usr/afs/etc/rxgk.keytab.
+      </programlisting>
+    </para>
+
+    <para>Now distribute
+    <emphasis role="bold">/usr/afs/etc/rxgk.keytab</emphasis> to all dbservers,
+    and restart the <emphasis role="bold">vlserver</emphasis> processes. Note
+    that you should <emphasis role="bold">not</emphasis> use this keytab with
+    <emphasis role="bold">asetkey</emphasis>; it is unrelated to the keys in
+    <emphasis role="bold">KeyFileExt</emphasis>,
+    <emphasis role="bold">KeyFile</emphasis>, or
+    <emphasis role="bold">rxkad.keytab</emphasis>.</para>
+
+    <para>You should now see this message in VLLog when vlserver starts:
+      <programlisting>
+Thu Apr 11 18:19:01 2024 rxgk: Using GSS acceptor creds for afs-rxgk@_afs.example.com in /usr/afs/etc/rxgk.keytab
+      </programlisting>
+    </para>
+
+    <para>Once that has been done, you can run
+    <emphasis role="bold">gklog</emphasis> on a client to obtain rxgk tokens.
+    The <emphasis role="bold">gklog</emphasis> command is similar to
+    <emphasis role="bold">aklog</emphasis>, but obtains rxgk tokens using
+    GSS.</para>
+
+    <para>For example (with MIT krb5):
+      <programlisting>
+$ <emphasis role="bold">kinit</emphasis>
+Password for user@EXAMPLE.COM:
+$ <emphasis role="bold">gklog</emphasis>
+$ <emphasis role="bold">klist</emphasis>
+Ticket cache: KEYRING:persistent:1001:1001
+Default principal: user@EXAMPLE.COM
+
+Valid starting       Expires              Service principal
+04/11/2024 16:11:48  04/12/2024 16:11:44  afs-rxgk/_afs.example.com@EXAMPLE.COM
+04/11/2024 16:11:45  04/12/2024 16:11:44  krbtgt/EXAMPLE.COM@EXAMPLE.COM
+$ <emphasis role="bold">tokens</emphasis>
+
+Tokens held by the Cache Manager:
+
+rxgk tokens for pts id 1004 for example.com [Expires Apr 12 15:58]
+   --End of list--
+$ <emphasis role="bold">pts whoami -rxgk crypt</emphasis>
+Name: user@EXAMPLE.COM, id: 1004
+Name data: type 2 (gss), base64 BAEACwYJKoZIhvcSAQICAAAAEHVzZXJARVhBTVBMRS5DT00=
+      </programlisting>
+    </para>
+
+    <para>With those tokens, you should be able to access files in AFS just
+    like if you had rxkad tokens, as well as run
+    <emphasis role="bold">pts</emphasis> and
+    <emphasis role="bold">vos</emphasis> commands.</para>
+
+    <para>One notable difference between <emphasis role="bold">gklog</emphasis>
+    and <emphasis role="bold">aklog</emphasis> is that
+    <emphasis role="bold">gklog</emphasis> needs to talk to the realm's KDC and
+    to the cell's vlservers. <emphasis role="bold">gklog</emphasis> cannot
+    obtain rxgk tokens if it cannot reach any vlservers, This is different from
+    <emphasis role="bold">aklog</emphasis>, which can obtain tokens without any
+    OpenAFS servers running.</para>
+  </sect1>
+
+  <sect1 id="RXGK006">
+    <title>bosserver access with krb5</title>
+
+    <para>Communicating with <emphasis role="bold">bosserver</emphasis> using
+    non-localauth rxgk is a bit different than for other server processes. For
+    other server processes, the client obtains tokens by talking to the
+    vlserver processes in a cell when you run
+    <emphasis role="bold">gklog</emphasis>. But the vlservers may not be
+    running when you want to run <emphasis role="bold">bos</emphasis> to bring
+    up the vlserver processes.</para>
+
+    <para>So, using <emphasis role="bold">bos</emphasis> with rxgk does not use
+    tokens obtained via <emphasis role="bold">gklog</emphasis> by default.
+    Instead, <emphasis role="bold">bos</emphasis> negotiates rxgk tokens by
+    talking directly to the <emphasis role="bold">bosserver</emphasis> process
+    every time you run <emphasis role="bold">bos</emphasis>, using the user's
+    krb5 tickets.</para>
+
+    <para>This is more similar to how some other non-AFS krb5 and GSS services
+    work, and requires a service principal for each server running
+    <emphasis role="bold">bosserver</emphasis>, and may require DNS to be set
+    up correctly depending on your krb5 configuration.</para>
+
+    <para>To set this up, create a krb5 principal
+    <emphasis role="bold">afs3-bos/</emphasis>&lt;<replaceable>machine name</replaceable>&gt;
+    and extract it to <emphasis role="bold">/usr/afs/etc/rxgk.keytab</emphasis>
+    on that machine. Afterwards, <emphasis role="bold">rxgk.keytab</emphasis>
+    will contain both the <emphasis role="bold">afs-rxgk</emphasis>
+    principal (if this is a dbserver) as well as the <emphasis
+    role="bold">afs3-bos</emphasis> principal for that machine.</para>
+
+    <para>If you want to use the same
+    <emphasis role="bold">rxgk.keytab</emphasis> file on multiple machines,
+    it's okay for all of them to contain
+    <emphasis role="bold">afs3-bos</emphasis> entries for other machines; each
+    bosserver just needs at least their own
+    <emphasis role="bold">afs3-bos</emphasis> principal in their
+    <emphasis role="bold">rxgk.keytab</emphasis> file. It's better for security
+    compartmentalization for each server to only have its own
+    <emphasis role="bold">afs3-bos</emphasis> entry and not any others for
+    other servers, but having extra entries won't break anything.</para>
+
+    <para>For example (with MIT krb5):
+      <programlisting>
+# <emphasis role="bold">kadmin.local</emphasis>
+kadmin.local: <emphasis role="bold">add_principal -randkey afs3-bos/fs1.example.com</emphasis>
+Principal "afs3-bos/fs1.example.com@EXAMPLE.COM" created.
+kadmin.local: <emphasis role="bold">ktadd -k /usr/afs/etc/rxgk.keytab -norandkey afs3-bos/fs1.example.com</emphasis>
+Entry for principal afs3-bos/fs1.example.com with kvno 1, encryption type aes256-cts-hmac-sha1-96 added to keytab WRFILE:/usr/afs/etc/rxgk.keytab.
+Entry for principal afs3-bos/fs1.example.com with kvno 1, encryption type aes128-cts-hmac-sha1-96 added to keytab WRFILE:/usr/afs/etc/rxgk.keytab.
+kadmin.local: ^D
+# <emphasis role="bold">ktutil</emphasis>
+ktutil: <emphasis role="bold">read_kt /usr/afs/etc/rxgk.keytab</emphasis>
+ktutil: <emphasis role="bold">list</emphasis>
+slot KVNO Principal
+---- ---- ---------------------------------------------------------------------
+   1    1 afs-rxgk/_afs.example.com@EXAMPLE.COM
+   2    1 afs-rxgk/_afs.example.com@EXAMPLE.COM
+   3    1 afs3-bos/fs1.example.com@EXAMPLE.COM
+   4    1 afs3-bos/fs1.example.com@EXAMPLE.COM
+      </programlisting>
+    </para>
+
+    <para>And then restart the <emphasis role="bold">bosserver</emphasis>. You
+    should now see this message in BosLog:
+      <programlisting>
+Thu Apr 11 18:19:01 2024 rxgk: Using GSS acceptor creds for afs3-bos@fs1 in /usr/afs/etc/rxgk.keytab
+      </programlisting>
+    </para>
+
+    <para>Once that is done, you should be able to use
+    <emphasis role="bold">bos</emphasis> with
+    <emphasis role="bold">-rxgk crypt</emphasis> without
+    <emphasis role="bold">-rxgk-cellwide</emphasis>. But you must specify the
+    same server name as is exists in the
+    <emphasis role="bold">afs3-bos</emphasis> principal name (fs1, or
+    fs1.example.com in the given example), or your krb5 library must be able to
+    canonicalize the given address to that name. (For example, in MIT krb5, see
+    the configuration directives
+    <emphasis role="bold">dns_canonicalize_hostname</emphasis> and
+    <emphasis role="bold">rdns</emphasis>.) Specifying
+    <emphasis role="bold">localhost</emphasis>, for example, may not
+    work.</para>
+
+    <para>For example:
+      <programlisting>
+$ <emphasis role="bold">bos status fs1.example.com -rxgk crypt</emphasis>
+Instance ptserver, currently running normally.
+Instance vlserver, currently running normally.
+Instance dafs, currently running normally.
+    Auxiliary status is: file server running.
+$ <emphasis role="bold">bos status localhost -rxgk crypt</emphasis>
+gss_init_sec_context: Unspecified GSS failure.  Minor code may provide more information [851968]
+gss_init_sec_context: Server afs3-bos/localhost@EXAMPLE.COM not found in Kerberos database [2529638919]
+bos: Security module structure inconsistent (configuring connection security)
+      </programlisting>
+    </para>
+
+    <para>You can still use <emphasis role="bold">localhost</emphasis> when
+    using <emphasis role="bold">-rxgk-cellwide</emphasis>. That flag causes
+    <emphasis role="bold">bos</emphasis> to use the tokens obtained by
+    <emphasis role="bold">gklog</emphasis> (for non-localauth), or tokens
+    generated from the cell-wide key data from <emphasis
+    role="bold">KeyFileExt</emphasis> (if -localauth is given), and doesn't use
+    the <emphasis role="bold">afs3-bos</emphasis> service principal to obtain
+    tokens. This isn't the default behavior, because it may not be possible to
+    acquire tokens if the <emphasis role="bold">vlserver</emphasis> isn't
+    running, and in the future the target server may not have the rxgk
+    cell-wide key available at all.</para>
+  </sect1>
+
+  <sect1 id="RXGK007">
+    <title>UserList GSS entries</title>
+
+    <para>Existing commands to alter the UserList like
+    <emphasis role="bold">bos adduser</emphasis> currently only work for rxkad
+    identities. To add access to users using rxgk, you must add GSS identities
+    to the UserList. There are no commands to do this conveniently yet, but you
+    can still add entries to the UserList manually. For example:
+      <programlisting>
+# pts whoami -rxgk crypt
+Name: admin@EXAMPLE.COM, id: 1005
+Name data: type 2 (gss), base64 BAEACwYJKoZIhvcSAQICAAAAEWFkbWluQEVYQU1QTEUuQ09N
+
+# cat /usr/afs/etc/UserList
+admin
+ 1 BAEACwYJKoZIhvcSAQICAAAAEWFkbWluQEVYQU1QTEUuQ09N admin@EXAMPLE.COM
+
+# <emphasis role="bold">vos create fs1.example.com a vol.test -rxgk crypt</emphasis>
+Volume 536870991 created on partition /vicepa of fs1.example.com
+      </programlisting>
+    </para>
+
+    <para>The second line of the example UserList shows a gss identity (type
+    1), with the base64-encoded identity of the user (obtained from
+    <emphasis role="bold">pts whoami</emphasis>), followed by the display name
+    for that user. Note that this line starts with a space before the 1, to
+    distinguish it from lines for rxkad users.</para>
+
+    <para>You may notice that the <emphasis role="bold">pts whoami</emphasis>
+    command shows a name of "type 2" for GSS identities, but the UserList
+    identifies a GSS user with a 1. This is confusing, but is due to certain
+    constants in the wire protocol (PRAUTHTYPE_GSS) differing from constants in
+    our internal file formats (RX_ID_GSS), both of which were defined many
+    years ago.</para>
+  </sect1>
+</appendix>

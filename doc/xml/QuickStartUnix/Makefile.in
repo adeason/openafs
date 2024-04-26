@@ -24,7 +24,7 @@ include @TOP_OBJDIR@/src/config/Makefile.version
 
 SRCS     = $(BOOK).xml auqbg003.xml auqbg004.xml auqbg005.xml auqbg006.xml \
 	   auqbg007.xml auqbg008.xml appendix.xml appendix_dafs.xml \
-	   $(VERSION).xml
+	   appendix_rxgk.xml $(VERSION).xml
 HTML_XSL = @HTML_XSL@
 DOCBOOK_STYLESHEETS = @DOCBOOK_STYLESHEETS@
 XSLTPROC = @XSLTPROC@
