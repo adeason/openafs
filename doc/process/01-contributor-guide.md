@@ -58,20 +58,20 @@ your time and expertise, and we look forward to collaborating with you.
 * **Install a test cell**: Follow the Quick Start Guide to install OpenAFS
   servers and clients in a test environment.
 
-
-## Guides
-
+## Sections
 
 * [code-of-conduct](code-of-conduct.md) : Our Code of Conduct for contributors and maintainers
-* [submitting-changes](submitting-changes.md) : A guide for submitting OpenAFS code chanages
 * [code-style-guide](code-style-guide.md) : Our coding style guide
-* [commit-messages](commit-messages.md) : Conventions for OpenAFS code commit messages
+* [submitting-changes](submitting-changes.md) : How to submit code changes
+* [commit-messages](commit-messages.md) : Conventions for commit messages
+* [backporting-guide](backporting-guide.md) : How to backport fixes
+* [build-system](build-system.md) : Build system information
 * [compiler-warnings](compiler-warnings.md) :  Compiler warning reduction and known warnings
-* [howto-build-openafs](howto-build-openafs.md) : How to build OpenAFS from source code
+* [howto-build-openafs](howto-build-openafs.md) : How to build from source code
 * [howto-create-packages](howto-create-packages.md) : How to create installation packages
 * [howto-report-bugs](howto-report-bugs.md) : How to report bugs
-* [howto-use-gerrit](howto-use-gerrit.md) : How to access and use Gerrit to review and submit changes
-* [platform-support](platform-support.md) : Targeted platforms and Linux kernel versions
+* [howto-use-gerrit](howto-use-gerrit.md) : How to submit changes to Gerrit
 * [security-bugs](security-bugs.md) : How to support security issues
-* [standards-compliance](standards-compliance.md) : Compatibility and interoperability policy
-* [backporting-guide](backporting-guide.md) : How to backport fixes
+* [standards-compliance](standards-compliance.md) : Compatibility and interoperability policies
+* [unit-tests](unit-tests.md) : Unit testing guide
+* [code-review-guide](code-review-guide) : Code review guide

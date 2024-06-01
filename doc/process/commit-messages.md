@@ -126,7 +126,7 @@ Do include:
   understandable on its own.
 
 * References to previous commits by SHA-1 and commit subject if this commit fixes
-  a regression or issue from the prevous commit.
+  a regression or issue from the previous commit.
 
 * Specific mentions of any new commands or public interfaces.
 

@@ -5,12 +5,12 @@
 This is a general guide for contributing changes to OpenAFS. This document
 gives guidance on how to organize and document your changes.
 
-OpenAFS uses the **Gerrit Code Review** system for developer collaboration.
-Your patches should be submitted to the [OpenAFS Gerrit code][1] review system
-to be reviewed. It is not unusual for changes to be requested by reviewers
-before the patches are accepted.  After reading this document, see
-[howto-use-gerrit](howto-use-gerrit.md) for information on how to access the
-Gerrit code review system.
+OpenAFS maintainers and developers use the **Gerrit Code Review** system for
+code review and collaboration.  Your patches should be submitted to the
+[OpenAFS Gerrit code][1] review system to be reviewed. It is not unusual for
+changes to be requested by reviewers before the patches are accepted.  After
+reading this document, see [howto-use-gerrit](howto-use-gerrit.md) for
+information on how to use the Gerrit Code Review system.
 
 A git mirror of the OpenAFS git repository is provided on GitHub at
 <https://github.com/openafs/openafs>. However, please note that GitHub pull
@@ -25,8 +25,11 @@ You can obtain the OpenAFS source tree from the upstream repository:
 Development proceeds on the `master` branch, so new changes should generally be
 based on the current `master` branch.
 
-* See [howto-build-openafs](howto-build-openafs.md) for instructions on how to build the binaries.
-* See [backporting-guide](backporting-guide.md) for information on to create changes for **stable** releases.
+See [howto-build-openafs](howto-build-openafs.md) for instructions on how to build the binaries
+from source code.
+
+See [backporting-guide](backporting-guide.md) for information on how to create
+changes for **stable** releases.
 
 ## Commit Guidelines
 
