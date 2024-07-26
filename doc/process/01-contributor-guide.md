@@ -19,14 +19,14 @@ seamless user mobility between workstations.
 The AFS distributed file system was implemented by CMU researchers between 1986
 and 1989, resulting in the AFS3 protocol, which gained adoption among academic
 institutions.  In 1989, Transarc Corporation commercialized the AFS
-implementation.  The Trasarc Corporation was acquired by IBM in the 1990s and
+implementation.  The Transarc Corporation was acquired by IBM in the 1990s and
 AFS development and support was continued by IBM Pittsburgh Labs. During this
 period, the commercial AFS implementation was deployed at research, government,
 and commercial organizations.
 
 In 2000, IBM released a version of the AFS code base under the IBM Public
 License, naming it **OpenAFS**. A set of volunteers and AFS enthusiasts based
-at CMU imported the code into a CVS repository hosted by CMU in Pittburgh. The
+at CMU imported the code into a CVS repository hosted by CMU in Pittsburgh. The
 project maintainers migrated the source code repository from CVS to Git in
 2008, adopting the Gerrit code review system for reviewing code contributions –
 a system still in use today.
@@ -53,7 +53,7 @@ your time and expertise, and we look forward to collaborating with you.
 ## Getting Started
 
 * **Read the Documentation**: Read the Quick Start Guide to learn how to install
-  OpenAFS, the User Guide, the Admistrator Guide.
+  OpenAFS, the User Guide, the Administrator Guide.
 * **Learn how to build OpenAFS**:  Learn how to build OpenAFS from source code.
 * **Install a test cell**: Follow the Quick Start Guide to install OpenAFS
   servers and clients in a test environment.
@@ -74,4 +74,4 @@ your time and expertise, and we look forward to collaborating with you.
 * [security-bugs](security-bugs.md) : How to support security issues
 * [standards-compliance](standards-compliance.md) : Compatibility and interoperability policies
 * [unit-tests](unit-tests.md) : Unit testing guide
-* [code-review-guide](code-review-guide) : Code review guide
+* [code-review-guide](code-review-guide.md) : Code review guide

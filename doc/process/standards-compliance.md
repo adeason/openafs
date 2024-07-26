@@ -40,13 +40,13 @@ declared in the corresponding `.sym` file for most platforms, as well as the
 `.def` file for WINNT. If we remove a public symbol, it should be removed from
 the `.sym`, and commented out of the `.def`.
 
-Note that `liboafs_*` libraries are all internal. Adding and removing enties
+Note that `liboafs_*` libraries are all internal. Adding and removing entries
 from a `liboafs_*.sym` file can be done freely.
 
 ## RPCs
 
 Most `.xg` files in the tree define RPCs and on-the-wire structures for use
-with network communcation. Most of the existing definitions in these files
+with network communication. Most of the existing definitions in these files
 cannot be changed; doing so would break compatibility with other versions of
 OpenAFS in strange ways and is strictly prohibited. A few `.xg` files are used
 just for examples or tests, and are only used internally and can be changed
@@ -80,9 +80,9 @@ it is a public interface, similar to symbols in a public library. So, we cannot
 change pioctls in a backwards-incompatible way, or remove pioctls, since that
 would break compatibility with older versions of OpenAFS.
 
-Arguments to pioctls and other userspace-kernel communcation data is usually
+Arguments to pioctls and other userspace-kernel communication data is usually
 declared in `src/config/afs_args.h`. Non-pioctl syscalls also exist for
-userspace-kernel communcation, but are mostly used by `afsd` for starting up
+userspace-kernel communication, but are mostly used by `afsd` for starting up
 or shutting down the client. These are considered a non-public interface, and
 these syscalls can be changed or removed as needed, but we still try to not
 deliberately break compatibility to allow for slight version mismatches between

@@ -76,7 +76,7 @@ Start by cloning the OpenAFS git repository:
     $ cd openafs
 
 Gerrit requires a user name and email for registration, so be sure your
-`user.name` and `user.email` in your git cofn Gerrit uses the `user.name` and
+`user.name` and `user.email` in your git configuration Gerrit uses the `user.name` and
 `user.email` in your git configuration
 
 Verify your name and email are in the git configuration. Run the following in

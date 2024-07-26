@@ -19,7 +19,7 @@ The format for a proper commit message is:
 ## Subject
 
 The first line of the commit message is the subject line. The subject line
-should be no more than 50 characters; slighty longer subject lines may be
+should be no more than 50 characters; slightly longer subject lines may be
 acceptable, but don't go over 72 characters.
 
 The subject line consists of a scope prefix and a change summary.

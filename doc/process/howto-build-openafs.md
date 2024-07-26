@@ -16,7 +16,7 @@ The following tools are needed to build OpenAFS:
 - lex
 - yacc
 - install
-- perl (only to build the documention)
+- perl (only to build the documentation)
 
 The C compiler used must be capable of building kernel modules for the target
 platform.

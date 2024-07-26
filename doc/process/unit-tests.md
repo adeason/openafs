@@ -137,10 +137,10 @@ When writing tests like this, the binary blob should be checked in to git, but
 you must also add the code that generates the binary blob, and have a test that
 verifies that the generating code can still generate the identical blob.
 
-If the code to generate the blob is impactical to run with the default unit
+If the code to generate the blob is impractical to run with the default unit
 tests (for example, it takes a lot of time, memory, or disk), the code should
 still be included in the relevant commit, as well as a test for that code. The
 blob-generating test just isn't added to the default `tests/TESTS` list, but
 should be manually run by reviewers before accepting the commit.
 
-Adding binary blobs that cannot be independantly created is not allowed.
+Adding binary blobs that cannot be independently created is not allowed.

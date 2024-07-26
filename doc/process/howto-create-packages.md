@@ -72,7 +72,7 @@ Build the packages:
 
     $ make rpm
 
-Source and binary RPM fiiles will be placed under the `packages` directory.
+Source and binary RPM files will be placed under the `packages` directory.
 
 
 ## Debian Packages
@@ -104,7 +104,7 @@ Build the **debs** with the command:
 
 The packages will be placed in the parent directory.
 
-To build source package also, generate the orig tarball and omit
+To build source package also, generate the original tarball and omit
 the -b option.
 
     $ debian/rules get-orig-source

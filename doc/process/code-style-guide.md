@@ -84,7 +84,7 @@ Prototypes for all source files in a given dir DDD should be placed in the file
 files) routines and variables should be prototyped in this file.
 
 The prototypes should be a full prototype, with argument and return types.
-(That is, they hould not generate a warning with `gcc -Wstrict-prototypes`.)
+(That is, they should not generate a warning with `gcc -Wstrict-prototypes`.)
 
 Format of the prototype files should look like:
 

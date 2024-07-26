@@ -20,5 +20,5 @@ example program illustrating the security issue.
 ## Security release
 
 The security team creates special security releases to address reported
-security issues.  A security advisory discribing the issue and the patches are
+security issues.  A security advisory describing the issue and the patches are
 published on the OpenAFS web site at the same time as the security release.
