@@ -51,9 +51,9 @@ Gerrit features include:
 
 The Gerrit workflow is patch-oriented.  Patches are logical changes that are
 tracked across revisions. This makes using Gerrit different than other popular
-Git based change management systems. In order to track changes to patches,
-Gerrit assigns a unique identifier called a `Change-Id` to each change,
-independent of Git commit SHA1 hashes.
+Git based change management systems, which are branch-oriented. In order to
+track changes to patches, Gerrit assigns a unique identifier called a
+`Change-Id` to each change, independent of Git commit SHA1 hashes.
 
 * Individual patches are submitted instead of **pull requests**.
 * A unique `Change-Id` is associated with each patch.
