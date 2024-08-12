@@ -7,10 +7,11 @@ gives guidance on how to organize and document your changes.
 
 OpenAFS maintainers and developers use the **Gerrit Code Review** system for
 code review and collaboration.  Your patches should be submitted to the
-[OpenAFS Gerrit code][1] review system to be reviewed. It is not unusual for
-changes to be requested by reviewers before the patches are accepted.  After
-reading this document, see [howto-use-gerrit](howto-use-gerrit.md) for
-information on how to use the Gerrit Code Review system.
+[OpenAFS Gerrit](https://gerrit.openafs.org/) code review system to be
+reviewed. It is not unusual for changes to be requested by reviewers before the
+patches are accepted.  After reading this document, see
+[howto-use-gerrit](howto-use-gerrit.md) for information on how to use the
+Gerrit Code Review system.
 
 A git mirror of the OpenAFS git repository is provided on GitHub at
 <https://github.com/openafs/openafs>. However, please note that GitHub pull
