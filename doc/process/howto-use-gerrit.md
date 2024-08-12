@@ -49,7 +49,7 @@ Gerrit features include:
 
 ## Gerrit workflow
 
-The Gerrit workflow is patch-oriented.  Patches are logical changes which are
+The Gerrit workflow is patch-oriented.  Patches are logical changes that are
 tracked across revisions. This makes using Gerrit different than other popular
 Git based change management systems. In order to track changes to patches,
 Gerrit assigns a unique identifier called a `Change-Id` to each change,
@@ -220,10 +220,10 @@ interface.
 
 ## Updating commits
 
-You may receive requests for changes before you commit can be merged to the
+You may receive requests for changes before your commit can be merged to the
 OpenAFS codebase. In this case you will need to revise your changes and
 resubmit them to Gerrit.  This should be done by modifying your change with
-`git commit --amend`, not by submitting an new change, or doing a forced push.
+`git commit --amend`, not by submitting a new change or doing a forced push.
 The revised change will have a new SHA1, but should contain the same
 `Change-Id` in the commit message.
 

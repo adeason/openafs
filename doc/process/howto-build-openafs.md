@@ -177,7 +177,7 @@ Run `make` to build the full tree:
 
     $ make
 
-Create a installation tree with `make`.
+Create an installation tree with `make`.
 
     $ make install DESTDIR=<path-to-staging-directory>
 

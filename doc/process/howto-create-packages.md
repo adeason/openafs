@@ -104,7 +104,7 @@ Build the **debs** with the command:
 
 The packages will be placed in the parent directory.
 
-To build source package also, generate the original tarball and omit
+To also build the source package, generate the original tarball and omit
 the -b option.
 
     $ debian/rules get-orig-source
