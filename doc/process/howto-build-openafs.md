@@ -25,7 +25,7 @@ In addition to the above, the following tools are needed to build OpenAFS from
 a Git checkout:
 
 - git
-- autoconf (version 2.60 or later)
+- autoconf (version 2.64 or later)
 - automake
 - libtool
 
