@@ -177,6 +177,10 @@ Run `make` to build the full tree:
 
     $ make
 
+Run the included unit tests:
+
+    $ make check
+
 Create an installation tree with `make`.
 
     $ make install DESTDIR=<path-to-staging-directory>
