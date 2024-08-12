@@ -254,4 +254,4 @@ interactively edit each commit that needs to be updated.
 You may also need to rebase (or cherry-pick) your changes to an updated master
 branch, if the master branch has changed since your last push to Gerrit. In
 this case, fetch the current master branch and rebase your changes on the updated
-branch.
+branch. Usually this can be done with a single `git pull --rebase`.
