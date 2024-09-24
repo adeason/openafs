@@ -39,8 +39,8 @@ struct afsconf_bsso_info {
     void (*logger)(const char *format, ...);
 };
 
-void afsconf_BuildServerSecurityObjects_int(struct afsconf_bsso_info *info,
-					    struct rx_securityClass ***classes,
-					    afs_int32 *numClasses);
+int afsconf_BuildServerSecurityObjects_int(struct afsconf_bsso_info *info,
+					   struct rx_securityClass ***classes,
+					   afs_int32 *numClasses);
 
 #endif /* OPENAFS_AUTH_AUTHCON_H */

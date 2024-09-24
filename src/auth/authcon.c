@@ -21,6 +21,7 @@
 #include <rx/rx_identity.h>
 
 #include <afs/pthread_glock.h>
+#include <afs/opr.h>
 
 #include "cellconfig.h"
 #include "keys.h"
@@ -452,21 +453,29 @@ afsconf_BuildServerSecurityObjects(void *rock,
 				   afs_int32 *numClasses)
 {
     struct afsconf_bsso_info info;
+    int code;
     memset(&info, 0, sizeof(info));
     info.dir = rock;
-    afsconf_BuildServerSecurityObjects_int(&info, classes, numClasses);
+    code = afsconf_BuildServerSecurityObjects_int(&info, classes, numClasses);
+    opr_Assert(code == 0);
 }
 
 /*!
  * Build a set of security classes suitable for a server accepting
  * incoming connections
  */
-void
+int
 afsconf_BuildServerSecurityObjects_int(struct afsconf_bsso_info *info,
 				       struct rx_securityClass ***classes,
 				       afs_int32 *numClasses)
 {
     struct afsconf_dir *dir = info->dir;
+    int code;
+
+    if (dir == NULL || classes == NULL || numClasses == NULL) {
+	code = AFSCONF_FAILURE;
+	goto done;
+    }
 
     if (afsconf_GetLatestKey(dir, NULL, NULL) == 0) {
 	LogDesWarning(info);
@@ -478,6 +487,10 @@ afsconf_BuildServerSecurityObjects_int(struct afsconf_bsso_info *info,
     *numClasses = RX_SECIDX_GK+1;
 
     *classes = calloc(*numClasses, sizeof(**classes));
+    if (*classes == NULL) {
+	code = ENOMEM;
+	goto done;
+    }
 
     (*classes)[RX_SECIDX_NULL] = rxnull_NewServerSecurityObject();
     (*classes)[RX_SECIDX_KAD] =
@@ -492,6 +505,11 @@ afsconf_BuildServerSecurityObjects_int(struct afsconf_bsso_info *info,
     (*classes)[RX_SECIDX_GK] =
 	rxgk_NewServerSecurityObject(dir, afsconf_GetRXGKKey);
 #endif
+
+    code = 0;
+
+ done:
+    return code;
 }
 
 static afs_int32
