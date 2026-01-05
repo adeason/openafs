@@ -216,6 +216,49 @@ test_add(void)
 }
 
 static void
+test_addSecs(void)
+{
+    int tc_i;
+    struct {
+	afs_int64 clunks;
+	afs_int64 add_secs;
+	int code;
+	afs_int64 expected;
+
+    } *tc, test_cases[] = {
+	{ 17508035490123456LL, 5, 0, 17508035540123456LL },
+
+	{  9223372036844775807LL,  1, 0, 0x7FFFFFFFFFFFFFFFLL },
+	{  9223372036844775808LL,  1, ERANGE },
+
+	{ -9223372036844775808LL, -1, 0, -0x7FFFFFFFFFFFFFFFLL - 1LL },
+	{ -9223372036844775809LL, -1, ERANGE },
+
+	{ 0x7FFFFFFFFFFFFFFFLL, -922337203685LL, 0, 4775807 },
+	{ 0x7FFFFFFFFFFFFFFFLL, -922337203686LL, ERANGE },
+
+	{ -0x7FFFFFFFFFFFFFFFLL - 1LL, 922337203685LL, 0, -4775808 },
+	{ -0x7FFFFFFFFFFFFFFFLL - 1LL, 922337203686LL, ERANGE },
+    };
+
+    for (afstest_Scan(test_cases, tc, tc_i)) {
+	struct afs_time64 in = { tc->clunks };
+	struct afs_time64 got = { 0 };
+
+	is_int(opr_time64_addSecs_safe(in, tc->add_secs, &got), tc->code,
+	       "opr_time64_addSecs_safe(%lld, %lld) == %d",
+	       opr_time64_toClunksLL(in),
+	       (long long)tc->add_secs,
+	       tc->code);
+	if (tc->code == 0) {
+	    is_time64(got, tc->expected,
+		      " ... returns time %lld",
+		      (long long)tc->expected);
+	}
+    }
+}
+
+static void
 test_fromSecs(void)
 {
     int tc_i;
@@ -463,7 +506,7 @@ test_now(void)
 int
 main(int argc, char **argv)
 {
-    plan(168);
+    plan(182);
 
     /* Assume EST timezone. */
     putenv("TZ=EST+5");
@@ -471,6 +514,7 @@ main(int argc, char **argv)
     test_cmp();
 
     test_add();
+    test_addSecs();
 
     test_fromSecs();
     test_fromMicrosecs();

@@ -364,4 +364,23 @@ opr_time64_now(void)
 }
 #endif /* !KERNEL || UKERNEL */
 
+/*
+ * Same as opr_time64_add_safe(), but we add whole seconds to 'in', instead of
+ * another afs_time64.
+ */
+static_inline int
+opr_time64_addSecs_safe(struct afs_time64 in, afs_int64 add_sec,
+			struct afs_time64 *out)
+{
+    int code;
+    struct afs_time64 add;
+
+    code = opr_time64_fromSecs_safe(add_sec, &add);
+    if (code != 0) {
+	return code;
+    }
+
+    return opr_time64_add_safe(in, add, out);
+}
+
 #endif /* OPENAFS_OPR_TIME_H */
