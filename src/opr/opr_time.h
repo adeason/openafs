@@ -113,6 +113,46 @@ opr_time64_eq(struct afs_time64 t1, struct afs_time64 t2)
     return opr_time64_cmp(t1, t2) == 0;
 }
 
+/* Return the maximum time representable by a struct afs_time64. */
+static_inline struct afs_time64
+opr_time64_maxTime(void)
+{
+    struct afs_time64 out = { OPR_TIME64_MAX_CLUNKS };
+    return out;
+}
+
+/* Is the given time the maximum representable time? */
+static_inline int
+opr_time64_isMaxtime(struct afs_time64 in)
+{
+    return opr_time64_eq(in, opr_time64_maxTime());
+}
+
+static_inline struct afs_time64
+opr_time64_zero(void)
+{
+    struct afs_time64 out = { 0 };
+    return out;
+}
+
+static_inline int
+opr_time64_isZero(struct afs_time64 in)
+{
+    return opr_time64_eq(in, opr_time64_zero());
+}
+
+static_inline int
+opr_time64_isNegative(struct afs_time64 in)
+{
+    return opr_time64_lt(in, opr_time64_zero());
+}
+
+static_inline int
+opr_time64_isPositive(struct afs_time64 in)
+{
+    return opr_time64_gt(in, opr_time64_zero());
+}
+
 /*
  * *out = in + add
  *

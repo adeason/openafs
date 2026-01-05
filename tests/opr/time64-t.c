@@ -161,6 +161,69 @@ test_cmp(void)
 }
 
 static void
+test_attrs(void)
+{
+    int tc_i;
+    struct {
+	afs_int64 clunks;
+	int res_ismaxtime;
+	int res_iszero;
+	int res_isnegative;
+	int res_ispositive;
+    } *tc, test_cases[] = {
+	{  0, 0, 1, 0, 0 },
+	{  5, 0, 0, 0, 1 },
+	{ -5, 0, 0, 1, 0 },
+
+	{  0x7FFFFFFF, 0, 0, 0, 1 },
+	{  0x7FFFFFFFFFFFFFFELL, 0, 0, 0, 1 },
+	{  0x7FFFFFFFFFFFFFFFLL, 1, 0, 0, 1 },
+	{ -0x7FFFFFFFFFFFFFFFLL - 1LL, 0, 0, 1, 0 },
+    };
+
+    for (afstest_Scan(test_cases, tc, tc_i)) {
+	struct afs_time64 val = { tc->clunks };
+
+	is_int(opr_time64_isMaxtime(val), tc->res_ismaxtime,
+	       "opr_time64_isMaxtime(%lld) == %d",
+	       opr_time64_toClunksLL(val), tc->res_ismaxtime);
+
+	is_int(opr_time64_isZero(val), tc->res_iszero,
+	       "opr_time64_isZero(%lld) == %d",
+	       opr_time64_toClunksLL(val), tc->res_iszero);
+
+	is_int(opr_time64_isNegative(val), tc->res_isnegative,
+	       "opr_time64_isNegative(%lld) == %d",
+	       opr_time64_toClunksLL(val), tc->res_isnegative);
+
+	is_int(opr_time64_isPositive(val), tc->res_ispositive,
+	       "opr_time64_isPositive(%lld) == %d",
+	       opr_time64_toClunksLL(val),
+	       tc->res_ispositive);
+    }
+}
+
+static void
+test_constants(void)
+{
+    int tc_i;
+    struct {
+	const char *descr;
+	struct afs_time64 got;
+	afs_int64 expected;
+    } *tc, test_cases[] = {
+	{ "maxTime", opr_time64_maxTime(), 0x7FFFFFFFFFFFFFFFLL },
+	{ "zero",    opr_time64_zero(),	   0 },
+    };
+
+    for (afstest_Scan(test_cases, tc, tc_i)) {
+	is_time64(tc->got, tc->expected,
+		  "%s == %lld",
+		  tc->descr, (long long)tc->expected);
+    }
+}
+
+static void
 test_add(void)
 {
     int tc_i;
@@ -506,12 +569,14 @@ test_now(void)
 int
 main(int argc, char **argv)
 {
-    plan(182);
+    plan(212);
 
     /* Assume EST timezone. */
     putenv("TZ=EST+5");
 
     test_cmp();
+    test_attrs();
+    test_constants();
 
     test_add();
     test_addSecs();
