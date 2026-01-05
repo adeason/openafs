@@ -389,6 +389,66 @@ test_toSecs(void)
 }
 
 static void
+test_ctime(void)
+{
+    int tc_i;
+    struct {
+	afs_int64 clunks;
+
+	/* opr_time64_ctime() can match either 'ctime' or 'ctime2' (if set). */
+	const char *ctime;
+	const char *ctime2;
+
+    } *tc, test_cases[] = {
+	{ 12336521450123456LL, "Tue Feb  3 04:09:05 2009" },
+
+	/* Around the 2^31 limit. */
+	{ 21474836470123456LL, "Mon Jan 18 22:14:07 2038" },
+	{ 21474836480123456LL, "Mon Jan 18 22:14:08 2038" },
+
+	/* Around the 2^32 limit. */
+	{ 42949672950123456LL, "Sun Feb  7 01:28:15 2106" },
+	{ 42949672960123456LL, "Sun Feb  7 01:28:16 2106" },
+
+	/* Arbitrary far-future date. */
+	{ 82949672960123456LL, "Fri Nov  9 08:34:56 2232" },
+
+	/*
+	 * Arbitrary negative dates. Don't go too far in the past; some systems
+	 * may interpret far-past dates differently.
+	 */
+	{    -3153600009999999LL, "Sun Jan  3 19:00:00 1960" },
+	{   -22089708009999999LL, "Mon Jan  1 00:00:00 1900" },
+
+	/*
+	 * Biggest/smallest possible dates. For times after year 9999 or before
+	 * year 0, ctime() on some sytems will return an error, but success on
+	 * others. Accept either result here.
+	 */
+	{  9223372036854775807LL, "Sat Sep 13 21:48:05 31197",
+				  "[922337203685]" },
+	{ -9223372036854775807LL - 1LL,
+				  "Sun Apr 19 16:11:55 -27258",
+				  "[-922337203685]" },
+    };
+
+    for (afstest_Scan(test_cases, tc, tc_i)) {
+	struct afs_time64 val = { tc->clunks };
+	char *got = opr_time64_ctime(val);
+	const char *exp_ctime = tc->ctime;
+
+	if (tc->ctime2 != NULL && strcmp(got, tc->ctime2) == 0) {
+	    exp_ctime = tc->ctime2;
+	}
+
+	is_string(got, exp_ctime,
+		  "opr_time64_ctime(%lld) == '%s'",
+		  opr_time64_toClunksLL(val),
+		  exp_ctime);
+    }
+}
+
+static void
 test_now(void)
 {
     struct afs_time64 now = opr_time64_now();
@@ -403,7 +463,7 @@ test_now(void)
 int
 main(int argc, char **argv)
 {
-    plan(158);
+    plan(168);
 
     /* Assume EST timezone. */
     putenv("TZ=EST+5");
@@ -417,6 +477,8 @@ main(int argc, char **argv)
     test_fromTimeval();
 
     test_toSecs();
+
+    test_ctime();
 
     test_now();
 

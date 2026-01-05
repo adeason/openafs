@@ -276,7 +276,52 @@ opr_time64_toUint32_wrap(struct afs_time64 in, afs_uint32 *out)
     *out = (secs % limit + limit) % limit;
 }
 
+#if !defined(KERNEL) || defined(UKERNEL) || !defined(AFS_LINUX_ENV)
+/*
+ * Version of opr_time64_toSecs() that converts to a system time_t
+ * specifically. Only use this when you need to actually use a time_t (for
+ * example, when dealing with libc functions).
+ */
+static_inline void
+opr_time64_toTimeT(struct afs_time64 in, time_t *out)
+{
+    opr_StaticAssert(sizeof(time_t) >= sizeof(afs_int64));
+    *out = opr_time64_toSecs(in);
+}
+#endif
+
 #if !defined(KERNEL) || defined(UKERNEL)
+/*
+ * Similar to ctime(3), but we take an afs_time64, and we trim off the trailing
+ * newline of the returned string.
+ *
+ * Like ctime(3), this returns a pointer to a static buffer, so try not to use
+ * this in multithreaded code.
+ */
+static_inline char *
+opr_time64_ctime(struct afs_time64 in)
+{
+    static char buf[26];
+    time_t secs;
+    char *str;
+    char *nl;
+
+    opr_time64_toTimeT(in, &secs);
+    str = ctime(&secs);
+    if (str == NULL) {
+	snprintf(buf, sizeof(buf), "[%ld]", (long)secs);
+	return buf;
+    }
+
+    /* Trim off trailing \n. */
+    nl = strchr(str, '\n');
+    if (nl != NULL) {
+	*nl = '\0';
+    }
+
+    return str;
+}
+
 static_inline int
 opr_time64_now_safe(struct afs_time64 *out)
 {
