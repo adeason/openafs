@@ -286,6 +286,8 @@ extern int afsconf_IsSuperIdentity(struct afsconf_dir *, struct rx_identity *);
 extern int afsconf_CheckRestrictedQuery(struct afsconf_dir *adir,
 					struct rx_call *acall,
 					int needed_level);
+extern int afsconf_Krb4LocalIdentity(struct afsconf_dir *adir,
+				     struct rx_identity **a_rxid);
 
 /*
  * Level constants for the -restricted_query option used by vlserver
