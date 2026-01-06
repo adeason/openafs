@@ -360,6 +360,43 @@ test_fromSecs(void)
 }
 
 static void
+test_from32(void)
+{
+    int tc_i;
+    struct {
+	afs_uint32 secs_u;
+	afs_int32 secs_s;
+	afs_int64 expected;
+
+    } *tc, test_cases[] = {
+	{ 5, 5, 50000000LL },
+	{ 2147483647, 2147483647, 21474836470000000LL },
+
+	{ 2147483650U, 0, 21474836500000000LL },
+	{ 4294967295U, 0, 42949672950000000LL },
+
+	{ 0, -5, -50000000LL },
+	{ 0, -2147483647,   -21474836470000000LL },
+	{ 0, -2147483648LL, -21474836480000000LL },
+    };
+
+    for (afstest_Scan(test_cases, tc, tc_i)) {
+	if (tc->secs_u != 0) {
+	    is_time64(opr_time64_fromUint32(&tc->secs_u), tc->expected,
+		      "opr_time64_fromUint32(%u) == %lld",
+		      tc->secs_u,
+		      (long long)tc->expected);
+	}
+	if (tc->secs_s != 0) {
+	    is_time64(opr_time64_fromInt32(&tc->secs_s), tc->expected,
+		      "opr_time64_fromInt32(%d) == %lld",
+		      tc->secs_s,
+		      (long long)tc->expected);
+	}
+    }
+}
+
+static void
 test_fromMicrosecs(void)
 {
     int tc_i;
@@ -569,7 +606,7 @@ test_now(void)
 int
 main(int argc, char **argv)
 {
-    plan(212);
+    plan(221);
 
     /* Assume EST timezone. */
     putenv("TZ=EST+5");
@@ -582,6 +619,7 @@ main(int argc, char **argv)
     test_addSecs();
 
     test_fromSecs();
+    test_from32();
     test_fromMicrosecs();
     test_fromTimeval();
 

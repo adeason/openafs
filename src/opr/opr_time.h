@@ -217,6 +217,23 @@ opr_time64_fromSecs(afs_int64 in)
     return val;
 }
 
+/*
+ * Same as opr_time64_fromSecs(), but using an unsigned int32. This is okay to
+ * use with untrusted data, since all seconds in the 32-bit int range can be
+ * represented as an afs_time64.
+ */
+static_inline struct afs_time64
+opr_time64_fromUint32(const afs_uint32 *in)
+{
+    return opr_time64_fromSecs(*in);
+}
+
+static_inline struct afs_time64
+opr_time64_fromInt32(const afs_int32 *in)
+{
+    return opr_time64_fromSecs(*in);
+}
+
 static_inline int
 opr_time64_fromMicrosecs_safe(afs_int64 in, struct afs_time64 *out)
 {
