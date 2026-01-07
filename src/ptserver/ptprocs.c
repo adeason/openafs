@@ -2049,6 +2049,68 @@ addWildCards(struct ubik_trans *tt, prlist *alist, afs_uint32 host)
 }
 
 /**
+ * Figure out the ptdb id number for the given Rx identity, and (optionally)
+ * return some info about foreign users.
+ *
+ * @param[in] rxid	The Rx identity to lookup.
+ * @param[in] at	The ubik transaction to use.
+ * @param[out] aid	The ptdb id number of the calling user.
+ * @param[out] a_isforeign  Optional. On success, set to nonzero if the calling
+ *			    user is a foreign user, or 0 otherwise.
+ * @param[out] fname	    Optional. On success, set to the name of the
+ *			    calling user if they are a foreign user.
+ * @param[in] fname_len	    The amount of space available in 'fname'.
+ *
+ * @return status
+ * @retval 0 success
+ * @retval nonzero error
+ */
+static int
+WhoIsThisIdentity(struct rx_identity *rxid, struct ubik_trans *at,
+		  afs_int32 *aid, int *a_isforeign, char *fname,
+		  size_t fname_len)
+{
+    afs_int32 code;
+
+    if (rxid->kind == RX_ID_SUPERUSER) {
+	*aid = SYSADMINID;
+	code = 0;
+	goto done;
+    }
+
+    if (rxid->kind == RX_ID_KRB4) {
+	char vname[256];
+	size_t len = strlen(rxid->displayName);
+	if (len >= sizeof(vname)) {
+	    code = PRINTERNAL;
+	    goto done;
+	}
+	lcstring(vname, rxid->displayName, sizeof(vname));
+	if (strchr(vname, '@') != NULL) {
+	    /* Our calling user is a foreign user. */
+	    if (a_isforeign) {
+		*a_isforeign = 1;
+	    }
+	    if (fname != NULL) {
+		if (len + 1 > fname_len) {
+		    code = PRINTERNAL;
+		    goto done;
+		}
+		strlcpy(fname, vname, fname_len);
+	    }
+	}
+	code = lookup_id_from_name(at, vname, aid);
+
+    } else {
+	/* We don't understand the identity of our caller. */
+	code = PRINTERNAL;
+    }
+
+ done:
+    return code;
+}
+
+/**
  * Figure out the ptdb id number for the user running the given Rx call, and
  * (optionally) return some info about foreign users.
  *
@@ -2096,38 +2158,7 @@ WhoIsThisForeign(struct rx_call *acall, struct ubik_trans *at, afs_int32 *aid,
 	goto error;
     }
 
-    if (rxid->kind == RX_ID_SUPERUSER) {
-	*aid = SYSADMINID;
-	goto done;
-    }
-
-    if (rxid->kind == RX_ID_KRB4) {
-	char vname[256];
-	size_t len = strlen(rxid->displayName);
-	if (len >= sizeof(vname)) {
-	    goto error;
-	}
-	lcstring(vname, rxid->displayName, sizeof(vname));
-	if (strchr(vname, '@') != NULL) {
-	    /* Our calling user is a foreign user. */
-	    if (a_isforeign) {
-		*a_isforeign = 1;
-	    }
-	    if (fname != NULL) {
-		if (len + 1 > fname_len) {
-		    goto error;
-		}
-		strlcpy(fname, vname, fname_len);
-	    }
-	}
-	code = lookup_id_from_name(at, vname, aid);
-
-    } else {
-	/* We don't understand the identity of our caller. */
-	goto error;
-	*aid = ANONYMOUSID;
-    }
-
+    code = WhoIsThisIdentity(rxid, at, aid, a_isforeign, fname, fname_len);
     if (code != 0) {
 	goto error;
     }
