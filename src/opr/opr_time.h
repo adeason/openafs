@@ -62,6 +62,7 @@
 #define OPR_TIME64_CLUNKS_PER_US    (10LL)
 #define OPR_TIME64_CLUNKS_PER_MS    (OPR_TIME64_CLUNKS_PER_US * 1000LL)
 #define OPR_TIME64_CLUNKS_PER_SEC   (OPR_TIME64_CLUNKS_PER_MS * 1000LL)
+#define OPR_TIME64_NS_PER_CLUNK     (100LL)
 
 #define OPR_TIME64_MAX_SECS  (922337203685LL)
 #define OPR_TIME64_MIN_SECS (-922337203685LL)
@@ -245,6 +246,19 @@ opr_time64_fromMicrosecs_safe(afs_int64 in, struct afs_time64 *out)
 }
 
 /*
+ * Same as opr_time64_fromSecs(), but the given time is given in nanoseconds
+ * instead of seconds. This is okay to use with untrusted data, since all
+ * nanoseconds in the 64-bit int range can be represented as an afs_time64.
+ */
+static_inline struct afs_time64
+opr_time64_fromNanosecs(afs_int64 in)
+{
+    struct afs_time64 val;
+    val.clunks = in / OPR_TIME64_NS_PER_CLUNK;
+    return val;
+}
+
+/*
  * Similar to opr_time64_fromSecs_safe(), but the given time is given in
  * seconds and microseconds.
  *
@@ -271,6 +285,21 @@ opr_time64_fromTimeval_safe(afs_int64 sec, afs_int64 microsec,
     }
 
     return opr_time64_add_safe(val, val_usec, out);
+}
+
+static_inline int
+opr_time64_fromTimespec_safe(afs_int64 sec, afs_int64 nanosec,
+			     struct afs_time64 *out)
+{
+    int code;
+    struct afs_time64 val;
+
+    code = opr_time64_fromSecs_safe(sec, &val);
+    if (code != 0) {
+	return code;
+    }
+
+    return opr_time64_add_safe(val, opr_time64_fromNanosecs(nanosec), out);
 }
 
 /*

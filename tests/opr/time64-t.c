@@ -428,6 +428,29 @@ test_fromMicrosecs(void)
 }
 
 static void
+test_fromNanosecs(void)
+{
+    int tc_i;
+    struct {
+	afs_int64 ns;
+	afs_int64 expected;
+    } *tc, test_cases[] = {
+	{ 5, 0 },
+	{ 101, 1 },
+
+	{  9223372036854775807LL,        92233720368547758LL },
+	{ -9223372036854775807LL - 1LL, -92233720368547758LL }
+    };
+
+    for (afstest_Scan(test_cases, tc, tc_i)) {
+	is_time64(opr_time64_fromNanosecs(tc->ns), tc->expected,
+		  "opr_time64_fromNanosecs(%lld) == %lld",
+		  (long long)tc->ns,
+		  (long long)tc->expected);
+    }
+}
+
+static void
 test_fromTimeval(void)
 {
     int tc_i;
@@ -473,6 +496,66 @@ test_fromTimeval(void)
 	       "opr_time64_fromTimeval_safe(%lld, %lld) == %d",
 	       (long long)tc->secs,
 	       (long long)tc->usec,
+	       tc->code);
+	if (tc->code == 0) {
+	    is_time64(got, tc->expected,
+		      " ... result matches %lld",
+		      (long long)tc->expected);
+	}
+    }
+}
+
+static void
+test_fromTimespec(void)
+{
+    int tc_i;
+    struct {
+	afs_int64 secs;
+	afs_int64 ns;
+	int code;
+	afs_int64 expected;
+    } *tc, test_cases[] = {
+	{ 0, 0, 0, 0 },
+
+	{  4,    5, 0,  40000000 },
+	{  4,   -5, 0,  40000000 },
+	{  4,  500, 0,  40000005 },
+	{  4,  501, 0,  40000005 },
+	{ -4, -500, 0, -40000005 },
+	{ -4, -501, 0, -40000005 },
+
+	{  4, 1000000501, 0, 50000005 }, /* weird, ns over 10^9 */
+	{  5,        501, 0, 50000005 },
+
+	{  4,      -501, 0, 39999995 },
+	{  3, 999999501, 0, 39999995 },
+
+	{ -4,      -501, 0, -40000005 },
+	{ -5, 999999501, 0, -40000005 },
+
+	{ 922337203685LL,  477580799, 0, 9223372036854775807LL },
+	{ 922337203685LL,  477580800, ERANGE },
+	{ 922337203685LL, -477580800, 0, 9223372036845224192LL },
+
+	{ 922337203686LL, 0, ERANGE },
+	{ 922337203686LL,  999999999, ERANGE },
+	{ 922337203686LL, -999999999, ERANGE },
+
+	{ -922337203685LL, -477580899, 0, -9223372036854775807LL - 1LL },
+	{ -922337203685LL, -477580900, ERANGE },
+	{ -922337203685LL,  477580900, 0, -9223372036845224191LL },
+
+	{ -922337203686LL, 0, ERANGE },
+	{ -922337203686LL,  999999999, ERANGE },
+	{ -922337203686LL, -999999999, ERANGE },
+    };
+
+    for (afstest_Scan(test_cases, tc, tc_i)) {
+	struct afs_time64 got;
+	is_int(opr_time64_fromTimespec_safe(tc->secs, tc->ns, &got), tc->code,
+	       "opr_time64_fromTimespec_safe(%lld, %lld) == %d",
+	       (long long)tc->secs,
+	       (long long)tc->ns,
 	       tc->code);
 	if (tc->code == 0) {
 	    is_time64(got, tc->expected,
@@ -606,7 +689,7 @@ test_now(void)
 int
 main(int argc, char **argv)
 {
-    plan(221);
+    plan(267);
 
     /* Assume EST timezone. */
     putenv("TZ=EST+5");
@@ -621,7 +704,9 @@ main(int argc, char **argv)
     test_fromSecs();
     test_from32();
     test_fromMicrosecs();
+    test_fromNanosecs();
     test_fromTimeval();
+    test_fromTimespec();
 
     test_toSecs();
 
