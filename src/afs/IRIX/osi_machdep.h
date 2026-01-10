@@ -19,8 +19,10 @@
 
 #include <sys/sema.h>
 #include <sys/pda.h>
-extern kmutex_t afs_global_lock;
 
+#include <opr/time.h>
+
+extern kmutex_t afs_global_lock;
 
 #undef osi_Time
 extern time_t time;
@@ -243,6 +245,19 @@ osi_GetTime(osi_timeval32_t *atv)
 #endif
     atv->tv_sec = now.tv_sec;
     atv->tv_usec = now.tv_usec;
+}
+
+static_inline int
+opr_time64_now_safe(struct afs_time64 *out)
+{
+#ifdef _K64U64
+    struct __irix5_timeval now;
+    irix5_microtime(&now);
+#else
+    struct timeval now;
+    microtime(&now);
+#endif
+    return opr_time64_fromTimeval_safe(now.tv_sec, now.tv_usec, out);
 }
 
 #endif /* _OSI_MACHDEP_H_ */

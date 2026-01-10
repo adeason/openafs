@@ -77,6 +77,7 @@
 #endif
 
 #include "afs/sysincludes.h"
+#include <opr/time.h>
 
 #if !defined(HAVE_LINUX_TIME_T)
 typedef time64_t time_t;
@@ -107,6 +108,13 @@ osi_GetTime(osi_timeval32_t *atv)
     atv->tv_sec = now.tv_sec;
     atv->tv_usec = now.tv_nsec / 1000;
 }
+static inline int
+opr_time64_now_safe(struct afs_time64 *out)
+{
+    struct timespec64 now;
+    ktime_get_real_ts64(&now);
+    return opr_time64_fromTimespec_safe(now.tv_sec, now.tv_nsec, out);
+}
 #else
 static inline void
 osi_GetTime(osi_timeval32_t *atv)
@@ -115,6 +123,13 @@ osi_GetTime(osi_timeval32_t *atv)
     do_gettimeofday(&now);
     atv->tv_sec = now.tv_sec;
     atv->tv_usec = now.tv_usec;
+}
+static inline int
+opr_time64_now_safe(struct afs_time64 *out)
+{
+    struct timeval now;
+    do_gettimeofday(&now);
+    return opr_time64_fromTimeval_safe(now.tv_sec, now.tv_usec, out);
 }
 #endif
 

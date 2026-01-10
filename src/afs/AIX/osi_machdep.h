@@ -19,6 +19,7 @@
 #define _OSI_MACHDEP_H_
 
 #include <sys/time.h>
+#include <opr/time.h>
 
 #undef osi_ThreadUnique
 #define osi_ThreadUnique()	thread_self()
@@ -92,6 +93,14 @@ osi_GetTime(osi_timeval32_t *atv)
     curtime(&now);
     atv->tv_sec = now.tv_sec;
     atv->tv_usec = now.tv_nsec / 1000;
+}
+
+static_inline int
+opr_time64_now_safe(struct afs_time64 *out)
+{
+    struct timestruc_t now;
+    curtime(&now);
+    return opr_time64_fromTimespec_safe(now.tv_sec, now.tv_nsec, out);
 }
 
 #endif /* _OSI_MACHDEP_H_ */

@@ -26,6 +26,8 @@
 #include <sys/vnode.h>
 #include <sys/priv.h>
 
+#include <opr/time.h>
+
 /*
  * Time related macros
  */
@@ -141,6 +143,14 @@ osi_GetTime(osi_timeval32_t *atv)
     microtime(&now);
     atv->tv_sec = now.tv_sec;
     atv->tv_usec = now.tv_usec;
+}
+
+static_inline int
+opr_time64_now_safe(struct afs_time64 *out)
+{
+    struct timeval now;
+    microtime(&now);
+    return opr_time64_fromTimeval_safe(now.tv_sec, now.tv_usec, out);
 }
 
 #ifdef FBSD_UMA_GETPBUF

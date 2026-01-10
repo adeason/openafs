@@ -32,6 +32,8 @@
 #include <sys/syscall.h>
 #include <sys/syscallargs.h>
 
+#include <opr/time.h>
+
 #if defined(AFS_NBSD50_ENV)
 # if !defined(DEF_CADDR_T)
 typedef char * caddr_t;
@@ -205,6 +207,14 @@ osi_GetTime(osi_timeval32_t *atv)
     getmicrotime(&now);
     atv->tv_sec = now.tv_sec;
     atv->tv_usec = now.tv_usec;
+}
+
+static_inline int
+opr_time64_now_safe(struct afs_time64 *out)
+{
+    struct timeval now;
+    getmicrotime(&now);
+    return opr_time64_fromTimeval_safe(now.tv_sec, now.tv_usec, out);
 }
 
 #endif /* _OSI_MACHDEP_H_ */
