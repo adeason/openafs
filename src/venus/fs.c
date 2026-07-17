@@ -312,13 +312,30 @@ enum aclu_rights_type {
     ACLU_RTYPE_RELDEL,
 };
 
-static afs_int32
-Convert(const char *rights_str, int dfs, enum aclu_rights_type *rtypep)
+struct aclu_parse_error {
+    char bad_char;
+    int bad_idx;
+};
+
+static int
+aclu_ParseRights(int dfs, const char *rights_str, afs_uint32 *a_mask,
+		 enum aclu_rights_type *rtypep, struct aclu_parse_error *error)
 {
     afs_int32 mode;
+    int tc_i;
     char tc;
     char *tcp;                  /* to walk through the rights string  */
     char *arights = NULL;
+
+    if (error != NULL) {
+	memset(error, 0, sizeof(*error));
+	error->bad_idx = -1;
+    }
+
+    if (rights_str == NULL || a_mask == NULL || rtypep == NULL) {
+	code = EINVAL;
+	goto error;
+    }
 
     arights = strdup(rights_str);
     opr_Assert(arights != NULL);
@@ -386,8 +403,9 @@ Convert(const char *rights_str, int dfs, enum aclu_rights_type *rtypep)
 	goto success;
     }
     mode = 0;
-    tcp = arights;
-    while ((tc = *tcp++ )) {
+    for (tc_i = 0; arights[tc_i] != '\0'; tc_i++) {
+	tc = arights[tc_i];
+
 	if (dfs) {
 	    if (tc == '-')
 		continue;
@@ -420,9 +438,12 @@ Convert(const char *rights_str, int dfs, enum aclu_rights_type *rtypep)
 	    else if (tc == 'H')
 		mode |= DFS_USR7;
 	    else {
-		fprintf(stderr, "%s: illegal DFS rights character '%c'.\n",
-			pn, tc);
-		exit(1);
+		if (error != NULL) {
+		    error->bad_char = tc;
+		    error->bad_idx = tc_i;
+		}
+		code = EINVAL;
+		goto error;
 	    }
 	} else {
 	    if (tc == 'r')
@@ -456,16 +477,67 @@ Convert(const char *rights_str, int dfs, enum aclu_rights_type *rtypep)
 	    else if (tc == 'H')
 		mode |= PRSFS_USR7;
 	    else {
-		fprintf(stderr, "%s: illegal rights character '%c'.\n", pn,
-			tc);
-		exit(1);
+		if (error != NULL) {
+		    error->bad_char = tc;
+		    error->bad_idx = tc_i;
+		}
+		code = EINVAL;
+		goto error;
 	    }
 	}
     }
 
  success:
+    *a_mask = mode;
+    code = 0;
+
+ error:
     free(arights);
-    return mode;
+    return code;
+}
+
+static int
+aclu_ParseRightsAFS(const char *arights, afs_uint32 *a_mask,
+		    enum aclu_rights_type *rtypep,
+		    struct aclu_parse_error *error)
+{
+    return aclu_ParseRights(0, arights, a_mask, rtypep, error);
+}
+
+static int
+aclu_ParseRightsDFS(const char *arights, afs_uint32 *a_mask,
+		    enum aclu_rights_type *rtypep,
+		    struct aclu_parse_error *error)
+{
+    return aclu_ParseRights(1, arights, a_mask, rtypep, error);
+}
+
+
+static afs_int32
+ParseRights(const char *arights, int dfs, enum aclu_rights_type *rtypep)
+{
+    const char *dfs_str = "";
+    struct aclu_parse_error error;
+    afs_uint32 mask = 0;
+    int code;
+
+    if (dfs) {
+	code = aclu_ParseRightsDFS(arights, &mask, rtypep, &error);
+	dfs_str = "DFS ";
+    } else {
+	code = aclu_ParseRightsAFS(arights, &mask, rtypep, &error);
+    }
+    if (code != 0) {
+	if (error.bad_char != 0) {
+	    fprintf(stderr, "%s: illegal %srights character '%c'.\n",
+		    pn, dfs_str, error.bad_char);
+	} else {
+	    fprintf(stderr, "%s: error parsing %srights.\n",
+		    pn, dfs_str);
+	}
+	exit(1);
+    }
+    return mask;
 }
 
 static struct AclEntry *
@@ -867,7 +939,7 @@ SetACLCmd(struct cmd_syndesc *as, void *arock)
 		ZapAcl(ta);
 		return 1;
 	    }
-	    rights = Convert(ui->next->data, ta->dfs, &rtype);
+	    rights = ParseRights(ui->next->data, ta->dfs, &rtype);
 	    if (rtype == ACLU_RTYPE_DESTROY && !ta->dfs) {
 		struct AclEntry *tlist;
 
