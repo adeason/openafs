@@ -82,4 +82,31 @@ extern int acl_IsAMember(afs_int32 aid, prlist *cps);
 extern int acl_HtonACL(struct acl_accessList *);
 extern int acl_NtohACL(struct acl_accessList *);
 
+/*
+ * The aclu_* routines and structs below ('u' for 'user' or 'utility') are for
+ * parsing/printing ACL data for end-user-facing applications. This is opposed
+ * to the acl_* routines above, which are for converting ACL data between
+ * on-disk and wire formats.
+ */
+
+enum aclu_rights_type {
+    ACLU_RTYPE_SET,
+    ACLU_RTYPE_DESTROY,
+    ACLU_RTYPE_DENY,
+    ACLU_RTYPE_RELADD,
+    ACLU_RTYPE_RELDEL,
+};
+
+struct aclu_parse_error {
+    char bad_char;
+    int bad_idx;
+};
+
+extern int aclu_ParseRightsAFS(const char *rights, afs_uint32 *mask,
+			       enum aclu_rights_type *rtypep,
+			       struct aclu_parse_error *error);
+extern int aclu_ParseRightsDFS(const char *arights, afs_uint32 *mask,
+			       enum aclu_rights_type *rtypep,
+			       struct aclu_parse_error *error);
+
 #endif
