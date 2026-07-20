@@ -109,4 +109,13 @@ extern int aclu_ParseRightsDFS(const char *arights, afs_uint32 *mask,
 			       enum aclu_rights_type *rtypep,
 			       struct aclu_parse_error *error);
 
+struct aclu_rightsbuf {
+    char sbuf[16];
+};
+
+extern const char * aclu_StringifyRightsAFS(afs_uint32 rights,
+					    struct aclu_rightsbuf *strbuf);
+extern const char * aclu_StringifyRightsDFS(afs_uint32 rights,
+					    struct aclu_rightsbuf *strbuf);
+
 #endif

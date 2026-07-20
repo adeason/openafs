@@ -201,3 +201,98 @@ aclu_ParseRightsDFS(const char *arights, afs_uint32 *a_mask,
 {
     return aclu_ParseRights(1, arights, a_mask, rtypep, error);
 }
+
+const char *
+aclu_StringifyRightsAFS(afs_uint32 rights, struct aclu_rightsbuf *strbuf)
+{
+    char *cur = strbuf->sbuf;
+
+    memset(strbuf, 0, sizeof(*strbuf));
+
+    if (arights & PRSFS_READ)
+	*cur++ = 'r';
+    if (arights & PRSFS_LOOKUP)
+	*cur++ = 'l';
+    if (arights & PRSFS_INSERT)
+	*cur++ = 'i';
+    if (arights & PRSFS_DELETE)
+	*cur++ = 'd';
+    if (arights & PRSFS_WRITE)
+	*cur++ = 'w';
+    if (arights & PRSFS_LOCK)
+	*cur++ = 'k';
+    if (arights & PRSFS_ADMINISTER)
+	*cur++ = 'a';
+    if (arights & PRSFS_USR0)
+	*cur++ = 'A';
+    if (arights & PRSFS_USR1)
+	*cur++ = 'B';
+    if (arights & PRSFS_USR2)
+	*cur++ = 'C';
+    if (arights & PRSFS_USR3)
+	*cur++ = 'D';
+    if (arights & PRSFS_USR4)
+	*cur++ = 'E';
+    if (arights & PRSFS_USR5)
+	*cur++ = 'F';
+    if (arights & PRSFS_USR6)
+	*cur++ = 'G';
+    if (arights & PRSFS_USR7)
+	*cur++ = 'H';
+
+    return strbuf->sbuf;
+}
+
+const char *
+aclu_StringifyRightsDFS(afs_uint32 rights, struct aclu_rightsbuf *strbuf)
+{
+    char *cur = strbuf->sbuf;
+
+    memset(strbuf, 0, sizeof(*strbuf));
+
+    if (arights & DFS_READ)
+	*cur++ = 'r';
+    else
+	*cur++ = '-';
+    if (arights & DFS_WRITE)
+	*cur++ = 'w';
+    else
+	*cur++ = '-';
+    if (arights & DFS_EXECUTE)
+	*cur++ = 'x';
+    else
+	*cur++ = '-';
+    if (arights & DFS_CONTROL)
+	*cur++ = 'c';
+    else
+	*cur++ = '-';
+    if (arights & DFS_INSERT)
+	*cur++ = 'i';
+    else
+	*cur++ = '-';
+    if (arights & DFS_DELETE)
+	*cur++ = 'd';
+    else
+	*cur++ = '-';
+    if (arights & (DFS_USRALL))
+	*cur++ = '+';
+    if (arights & DFS_USR0)
+	*cur++ = 'A';
+    if (arights & DFS_USR1)
+	*cur++ = 'B';
+    if (arights & DFS_USR2)
+	*cur++ = 'C';
+    if (arights & DFS_USR3)
+	*cur++ = 'D';
+    if (arights & DFS_USR4)
+	*cur++ = 'E';
+    if (arights & DFS_USR5)
+	*cur++ = 'F';
+    if (arights & DFS_USR6)
+	*cur++ = 'G';
+    if (arights & DFS_USR7)
+	*cur++ = 'H';
+
+    return strbuf->sbuf;
+}
+
