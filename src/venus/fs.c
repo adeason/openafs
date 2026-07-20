@@ -404,16 +404,22 @@ EmptyAcl(char *astr)
     return tp;
 }
 
-static struct aclu_Acl *
-ParseAcl(const char *astr)
+static int
+aclu_ParseAcl(const char *astr, struct aclu_Acl **a_acl)
 {
     int nplus = 0, nminus = 0, i, trights = 0;
     char tname[MAXNAME + 1] = "";
     struct aclu_AclEntry *first, *last, *tl;
     struct aclu_Acl *ta;
 
+    *a_acl = NULL;
+
     ta = calloc(sizeof(*ta), 1);
-    assert(ta);
+    if (ta == NULL) {
+	code = ENOMEM;
+	goto done;
+    }
+
     ta->dfs = 0;
     sscanf(astr, "%d dfs:%d %1024s", &ta->nplus, &ta->dfs, ta->cell);
     astr = SkipLine(astr);
@@ -429,7 +435,10 @@ ParseAcl(const char *astr)
 	sscanf(astr, "%99s %d", tname, &trights);
 	astr = SkipLine(astr);
 	tl = calloc(sizeof(*tl), 1);
-	assert(tl);
+	if (tl == NULL) {
+	    code = ENOMEM;
+	    goto done;
+	}
 	if (!first)
 	    first = tl;
 	strcpy(tl->name, tname);
@@ -447,7 +456,10 @@ ParseAcl(const char *astr)
 	sscanf(astr, "%99s %d", tname, &trights);
 	astr = SkipLine(astr);
 	tl = calloc(sizeof(*tl), 1);
-	assert(tl);
+	if (tl == NULL) {
+	    code = ENOMEM;
+	    goto done;
+	}
 	if (!first)
 	    first = tl;
 	strcpy(tl->name, tname);
@@ -459,7 +471,24 @@ ParseAcl(const char *astr)
     }
     ta->minuslist = first;
 
-    return ta;
+    *a_acl = ta;
+    code = 0;
+
+ done:
+    if (code != 0) {
+	aclu_FreeAcl(&ta);
+    }
+    return code;
+}
+
+static struct aclu_Acl *
+ParseAcl(const char *astr)
+{
+    struct aclu_Acl *acl = NULL;
+    int code = aclu_ParseAcl(astr, &acl);
+    opr_Assert(code == 0);
+    opr_Assert(acl != NULL);
+    return acl;
 }
 
 static int
