@@ -330,6 +330,31 @@ SkipLine(const char *astr)
     return astr;
 }
 
+/*
+ * Create an empty acl, taking into account whether the acl pointed
+ * to by astr is an AFS or DFS acl. Only parse this minimally, so we
+ * can recover from problems caused by bogus ACL's (in that case, always
+ * assume that the acl is AFS: for DFS, the user can always resort to
+ * acl_edit, but for AFS there may be no other way out).
+ */
+int
+aclu_ParseEmptyAcl(const char *astr, struct aclu_Acl **a_acl)
+{
+    struct aclu_Acl *tp;
+    int junk;
+
+    tp = calloc(sizeof(*tp), 1);
+    if (tp == NULL) {
+	return ENOMEM;
+    }
+
+    tp->nplus = tp->nminus = 0;
+    tp->pluslist = tp->minuslist = 0;
+    tp->dfs = 0;
+    sscanf(astr, "%d dfs:%d %1024s", &junk, &tp->dfs, tp->cell);
+    return tp;
+}
+
 int
 aclu_ParseAcl(const char *astr, struct aclu_Acl **a_acl)
 {
