@@ -137,4 +137,10 @@ struct aclu_Acl {
 extern int aclu_ParseAcl(const char *astr, struct aclu_Acl **a_acl);
 extern void aclu_FreeAcl(struct aclu_Acl **a_acl);
 
+struct aclu_aclbuf {
+    char sbuf[AFS_PIOCTL_MAXSIZE + 24];
+};
+
+extern char *aclu_AclToNetstring(struct aclu_Acl *acl, struct aclu_aclbuf *buf);
+
 #endif

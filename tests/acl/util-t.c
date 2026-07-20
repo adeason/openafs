@@ -239,6 +239,42 @@ test_ParseAcl(void)
     }
 }
 
+static void
+test_AclToNetstring(void)
+{
+    int tc_i;
+
+    struct aclu_AclEntry readers = { NULL, "readers", 9 };
+    struct aclu_AclEntry pluslist_2 = { &readers, "system:administrators", 127 };
+
+    struct aclu_AclEntry pluslist_1 = {	    NULL, "system:administrators", 127 };
+    struct aclu_AclEntry minuslist_1 = { NULL, "baduser", 9 };
+
+    struct {
+	struct aclu_Acl acl;
+	const char *netstr;
+
+    } *tc, test_cases[] = {
+	{
+	    { 0, "", 2, 0, &pluslist_2, NULL },
+	    "2\n0\nsystem:administrators 127\nreaders 9\n",
+	},
+	{
+	    { 0, "", 1, 1, &pluslist_1, &minuslist_1 },
+	    "1\n1\nsystem:administrators 127\nbaduser 9\n",
+	},
+    };
+
+    for (afstest_Scan(test_cases, tc, tc_i)) {
+	struct aclu_aclbuf buf;
+
+	memset(&buf, 0, sizeof(buf));
+
+	is_string(aclu_AclToNetstring(&tc->acl, &buf), tc->netstr,
+		  "[%d] aclu_AclToNetstring() matches");
+    }
+}
+
 int
 main(void)
 {
@@ -247,4 +283,5 @@ main(void)
     test_ParseRights();
     test_StringifyRights();
     test_ParseAcl();
+    test_AclToNetstring();
 }
