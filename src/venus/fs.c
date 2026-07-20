@@ -60,8 +60,6 @@ static int UuidCmd(struct cmd_syndesc *, void *);
 static char pn[] = "fs";
 static int rxInitDone = 0;
 
-struct aclu_AclEntry;
-struct aclu_Acl;
 static int PruneList(struct aclu_AclEntry **, int);
 static int CleanAcl(struct aclu_Acl *, char *);
 static int SetVolCmd(struct cmd_syndesc *as, void *arock);
@@ -74,53 +72,12 @@ static void Die(int, char *);
  */
 #define DFS_SEPARATOR	' '
 
-struct aclu_Acl {
-    int dfs;			/* Originally true if a dfs acl; now also the type
-				 * of the acl (1, 2, or 3, corresponding to object,
-				 * initial dir, or initial object). */
-    char cell[1025];	/* DFS cell name, from DCE sec_rgy_name_t */
-    int nplus;
-    int nminus;
-    struct aclu_AclEntry *pluslist;
-    struct aclu_AclEntry *minuslist;
-};
-
-struct aclu_AclEntry {
-    struct aclu_AclEntry *next;
-    char name[MAXNAME];
-    afs_int32 rights;
-};
-
 struct vcxstat2 {
     afs_int32 callerAccess;
     afs_int32 cbExpires;
     afs_int32 anyAccess;
     char mvstat;
 };
-
-static void
-FreeEntryList(struct aclu_AclEntry *alist)
-{
-    struct aclu_AclEntry *tp, *np;
-    for (tp = alist; tp; tp = np) {
-	np = tp->next;
-	free(tp);
-    }
-}
-
-static void
-aclu_FreeAcl(struct aclu_Acl **a_acl)
-{
-    struct aclu_Acl *acl = *a_acl;
-    if (acl == NULL) {
-	return;
-    }
-    *a_acl = NULL;
-
-    FreeEntryList(acl->pluslist);
-    FreeEntryList(acl->minuslist);
-    free(acl);
-}
 
 static int
 foldcmp(char *a, char *b)
@@ -372,16 +329,6 @@ PruneList(struct aclu_AclEntry **ae, int dfs)
     return ctr;
 }
 
-static const char *
-SkipLine(const char *astr)
-{
-    while (*astr != '\0' && *astr != '\n')
-	astr++;
-    if (*astr == '\n')
-	astr++;
-    return astr;
-}
-
 /*
  * Create an empty acl, taking into account whether the acl pointed
  * to by astr is an AFS or DFS acl. Only parse this minimally, so we
@@ -402,83 +349,6 @@ EmptyAcl(char *astr)
     tp->dfs = 0;
     sscanf(astr, "%d dfs:%d %1024s", &junk, &tp->dfs, tp->cell);
     return tp;
-}
-
-static int
-aclu_ParseAcl(const char *astr, struct aclu_Acl **a_acl)
-{
-    int nplus = 0, nminus = 0, i, trights = 0;
-    char tname[MAXNAME + 1] = "";
-    struct aclu_AclEntry *first, *last, *tl;
-    struct aclu_Acl *ta;
-
-    *a_acl = NULL;
-
-    ta = calloc(sizeof(*ta), 1);
-    if (ta == NULL) {
-	code = ENOMEM;
-	goto done;
-    }
-
-    ta->dfs = 0;
-    sscanf(astr, "%d dfs:%d %1024s", &ta->nplus, &ta->dfs, ta->cell);
-    astr = SkipLine(astr);
-    sscanf(astr, "%d", &ta->nminus);
-    astr = SkipLine(astr);
-
-    nplus = ta->nplus;
-    nminus = ta->nminus;
-
-    last = 0;
-    first = 0;
-    for (i = 0; i < nplus; i++) {
-	sscanf(astr, "%99s %d", tname, &trights);
-	astr = SkipLine(astr);
-	tl = calloc(sizeof(*tl), 1);
-	if (tl == NULL) {
-	    code = ENOMEM;
-	    goto done;
-	}
-	if (!first)
-	    first = tl;
-	strcpy(tl->name, tname);
-	tl->rights = trights;
-	tl->next = 0;
-	if (last)
-	    last->next = tl;
-	last = tl;
-    }
-    ta->pluslist = first;
-
-    last = 0;
-    first = 0;
-    for (i = 0; i < nminus; i++) {
-	sscanf(astr, "%99s %d", tname, &trights);
-	astr = SkipLine(astr);
-	tl = calloc(sizeof(*tl), 1);
-	if (tl == NULL) {
-	    code = ENOMEM;
-	    goto done;
-	}
-	if (!first)
-	    first = tl;
-	strcpy(tl->name, tname);
-	tl->rights = trights;
-	tl->next = 0;
-	if (last)
-	    last->next = tl;
-	last = tl;
-    }
-    ta->minuslist = first;
-
-    *a_acl = ta;
-    code = 0;
-
- done:
-    if (code != 0) {
-	aclu_FreeAcl(&ta);
-    }
-    return code;
 }
 
 static struct aclu_Acl *

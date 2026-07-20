@@ -81,6 +81,164 @@ test_StringifyRights(void)
 		  tc->rights, tc->str);
 }
 
+struct test_aclu_AclEntry {
+    char *name;
+    afs_uint32 rights;
+};
+struct test_aclu_Acl {
+    int nplus;
+    int nminus;
+    struct test_aclu_AclEntry pluslist[20];
+    struct test_aclu_AclEntry minuslist[20];
+
+    int dfs;
+    char *cell;
+};
+
+static int
+check_AclEntry(const char *list, int idx, struct aclu_AclEntry *got, struct test_aclu_AclEntry *exp)
+{
+    if (strcmp(got->name, exp->name) != 0) {
+	diag(" left AclEntry %s[%d] name: %s", got->name);
+	diag("right AclEntry %s[%d] name: %s", exp->name);
+	return 0;
+    }
+
+    if (got->rights != exp->rights) {
+	diag(" left AclEntry %s[%d] rights: 0x%x", got->rights);
+	diag("right AclEntry %s[%d] rights: 0x%x", exp->rights);
+	return 0;
+    }
+
+    return 1;
+}
+
+static int
+is_acl_v(struct aclu_Acl *got, struct test_aclu_Acl *exp, const char *fmt,
+	 va_list ap)
+{
+    int success;
+    const char *exp_cell;
+
+    opr_Assert(exp != NULL);
+
+    if (got == NULL) {
+	diag(" left: NULL");
+	diag("right: not NULL");
+	goto fail;
+    }
+
+    if (got->nplus != exp->nplus) {
+	diag(" left nplus: %d", got->nplus);
+	diag("right nplus: %d", exp->nplus);
+	goto fail
+    }
+
+    if (got->nminus != exp->nminus) {
+	diag(" left nminus: %d", got->nminus);
+	diag("right nminus: %d", exp->nminus);
+	goto fail
+    }
+
+    for (entry_i = 0; entry_i < got->nplus; entry_i++) {
+	success = check_AclEntry("pluslist", entry_i,
+				 got->pluslist[entry_i],
+				 exp->pluslist[entry_i]);
+	if (!success) {
+	    goto fail;
+	}
+    }
+
+    for (entry_i = 0; entry_i < got->nplus; entry_i++) {
+	success = check_AclEntry("minuslist", entry_i,
+				 got->minuslist[entry_i],
+				 exp->minuslist[entry_i]);
+	if (!success) {
+	    goto fail;
+	}
+    }
+
+    if (got->dfs != exp->dfs) {
+	diag(" left dfs: %d", got->dfs);
+	diag("right dfs: %d", exp->dfs);
+	goto fail;
+    }
+
+    exp_cell = exp->cell;
+    if (exp_cell == NULL) {
+	exp_cell = "";
+    }
+    if (strcmp(got->cell, exp_cell) != 0) {
+	diag(" left cell: %s", got->cell);
+	diag("right cell: %s", exp->cell);
+	goto fail;
+    }
+
+    success = 1;
+
+ done:
+    okv(success, fmt, ap);
+
+    return success;
+
+ fail:
+    success = 0;
+    goto done;
+}
+
+static int
+is_acl(struct aclu_Acl *got, struct test_aclu_Acl *exp, const char *fmt, ...)
+{
+    int success;
+    va_list args;
+
+    va_start(args, fmt);
+    success = is_acl_v(got, exp, fmt, args);
+    va_end(args);
+
+    return success;
+}
+
+static void
+test_ParseAcl(void)
+{
+    int tc_i;
+    struct {
+	const char *str;
+	int code;
+	struct test_aclu_Acl acl;
+
+    } *tc, test_cases[] = {
+	{ "2\n0\nsystem:administrators 127\nreaders 9\n", 0,
+	    {	2, 0,
+		{   { NULL, "system:administators", 127 },
+		    { NULL, "readers", 9 },
+		},
+	    },
+	},
+
+	{ "1\n1\nsystem:administrators 127\nbadusers 9\n", 0,
+	    {	1, 1,
+		{{ NULL, "system:administators", 127 }},
+		{{ NULL, "badusers", 9 }},
+	    },
+	},
+    };
+
+    for (afstest_Scan(test_cases, tc, tc_i)) {
+	struct aclu_acl acl;
+
+	memset(&acl, 0, sizeof(acl));
+
+	is_code(aclu_ParseAcl(tc->str, &acl), tc->code,
+		"[%d] aclu_ParseAcl() == %d",
+		tc_i, tc->code);
+	if (tc->code == 0) {
+	    is_acl(acl, &tc->acl, "... acl matches");
+	}
+    }
+}
+
 int
 main(void)
 {
@@ -88,4 +246,5 @@ main(void)
 
     test_ParseRights();
     test_StringifyRights();
+    test_ParseAcl();
 }

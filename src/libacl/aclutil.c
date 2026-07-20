@@ -296,3 +296,113 @@ aclu_StringifyRightsDFS(afs_uint32 rights, struct aclu_rightsbuf *strbuf)
     return strbuf->sbuf;
 }
 
+static void
+FreeEntryList(struct aclu_AclEntry *alist)
+{
+    struct aclu_AclEntry *tp, *np;
+    for (tp = alist; tp; tp = np) {
+	np = tp->next;
+	free(tp);
+    }
+}
+
+static void
+aclu_FreeAcl(struct aclu_Acl **a_acl)
+{
+    struct aclu_Acl *acl = *a_acl;
+    if (acl == NULL) {
+	return;
+    }
+    *a_acl = NULL;
+
+    FreeEntryList(acl->pluslist);
+    FreeEntryList(acl->minuslist);
+    free(acl);
+}
+
+static const char *
+SkipLine(const char *astr)
+{
+    while (*astr != '\0' && *astr != '\n')
+	astr++;
+    if (*astr == '\n')
+	astr++;
+    return astr;
+}
+
+int
+aclu_ParseAcl(const char *astr, struct aclu_Acl **a_acl)
+{
+    int nplus = 0, nminus = 0, i, trights = 0;
+    char tname[MAXNAME + 1] = "";
+    struct aclu_AclEntry *first, *last, *tl;
+    struct aclu_Acl *ta;
+
+    *a_acl = NULL;
+
+    ta = calloc(sizeof(*ta), 1);
+    if (ta == NULL) {
+	code = ENOMEM;
+	goto done;
+    }
+
+    ta->dfs = 0;
+    sscanf(astr, "%d dfs:%d %1024s", &ta->nplus, &ta->dfs, ta->cell);
+    astr = SkipLine(astr);
+    sscanf(astr, "%d", &ta->nminus);
+    astr = SkipLine(astr);
+
+    nplus = ta->nplus;
+    nminus = ta->nminus;
+
+    last = 0;
+    first = 0;
+    for (i = 0; i < nplus; i++) {
+	sscanf(astr, "%99s %d", tname, &trights);
+	astr = SkipLine(astr);
+	tl = calloc(sizeof(*tl), 1);
+	if (tl == NULL) {
+	    code = ENOMEM;
+	    goto done;
+	}
+	if (!first)
+	    first = tl;
+	strcpy(tl->name, tname);
+	tl->rights = trights;
+	tl->next = 0;
+	if (last)
+	    last->next = tl;
+	last = tl;
+    }
+    ta->pluslist = first;
+
+    last = 0;
+    first = 0;
+    for (i = 0; i < nminus; i++) {
+	sscanf(astr, "%99s %d", tname, &trights);
+	astr = SkipLine(astr);
+	tl = calloc(sizeof(*tl), 1);
+	if (tl == NULL) {
+	    code = ENOMEM;
+	    goto done;
+	}
+	if (!first)
+	    first = tl;
+	strcpy(tl->name, tname);
+	tl->rights = trights;
+	tl->next = 0;
+	if (last)
+	    last->next = tl;
+	last = tl;
+    }
+    ta->minuslist = first;
+
+    *a_acl = ta;
+    code = 0;
+
+ done:
+    if (code != 0) {
+	aclu_FreeAcl(&ta);
+    }
+    return code;
+}
