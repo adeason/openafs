@@ -480,10 +480,13 @@ QuickPrintSpace(VolumeStatus * status, char *name, int human)
     return 0;
 }
 
+struct aclu_aclbuf {
+    char sbuf[AFS_PIOCTL_MAXSIZE + 24];
+};
+
 static char *
-AclToString(struct aclu_Acl *acl)
+aclu_AclToNetstring(struct aclu_Acl *acl, struct aclu_aclbuf *buf)
 {
-    static char mydata[AFS_PIOCTL_MAXSIZE + 24];
     char tstring[AFS_PIOCTL_MAXSIZE];
     char dfsstring[AFS_PIOCTL_MAXSIZE];
     struct aclu_AclEntry *tp;
@@ -492,16 +495,23 @@ AclToString(struct aclu_Acl *acl)
 	snprintf(dfsstring, sizeof(dfsstring), " dfs:%d %s", acl->dfs, acl->cell);
     else
 	dfsstring[0] = '\0';
-    snprintf(mydata, sizeof(mydata), "%d%s\n%d\n", acl->nplus, dfsstring, acl->nminus);
+    snprintf(buf->sbuf, sizeof(buf->sbuf), "%d%s\n%d\n", acl->nplus, dfsstring, acl->nminus);
     for (tp = acl->pluslist; tp; tp = tp->next) {
 	snprintf(tstring, sizeof(tstring), "%s %d\n", tp->name, tp->rights);
-	strlcat(mydata, tstring, sizeof(mydata));
+	strlcat(buf->sbuf, tstring, sizeof(buf->sbuf));
     }
     for (tp = acl->minuslist; tp; tp = tp->next) {
 	snprintf(tstring, sizeof(tstring), "%s %d\n", tp->name, tp->rights);
-	strlcat(mydata, tstring, sizeof(mydata));
+	strlcat(buf->sbuf, tstring, sizeof(buf->sbuf));
     }
-    return mydata;
+    return buf->sbuf;
+}
+
+static char *
+AclToString(struct aclu_Acl *acl)
+{
+    static struct aclu_aclbuf buf;
+    return aclu_AclToNetstring(acl, &buf);
 }
 
 static int
