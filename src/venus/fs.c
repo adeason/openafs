@@ -766,57 +766,6 @@ FilterBadName(struct aclu_Acl *acl, int neg, const char *aname,
     return 0;
 }
 
-typedef int (aclu_filter_func)(struct aclu_Acl *acl, int neg,
-			       const char *name, afs_uint32 rights, void *rock,
-			       int *a_remove);
-
-static int
-aclu_FilterAcl(struct aclu_Acl *aa, aclu_filter_func *filter, void *rock)
-{
-    struct aclu_AclEntry *te, **le, *ne;
-    int code;
-
-    /* Don't process DFS ACLs */
-    if (aa->dfs)
-	return 0;
-
-    le = &aa->pluslist;
-    for (te = aa->pluslist; te; te = ne) {
-	int remove = 0;
-	ne = te->next;
-	code = filter(aa, 0, te->name, te->rights, rock, &remove);
-	if (code != 0) {
-	    return code;
-	}
-	if (remove) {
-	    /* zap this dude */
-	    *le = te->next;
-	    aa->nplus--;
-	    free(te);
-	} else {
-	    le = &te->next;
-	}
-    }
-    le = &aa->minuslist;
-    for (te = aa->minuslist; te; te = ne) {
-	int remove = 0;
-	ne = te->next;
-	code = filter(aa, 1, te->name, te->rights, rock, &remove);
-	if (code != 0) {
-	    return code;
-	}
-	if (remove) {
-	    /* zap this dude */
-	    *le = te->next;
-	    aa->nminus--;
-	    free(te);
-	} else {
-	    le = &te->next;
-	}
-    }
-    return 0;
-}
-
 /* clean up an access control list of its bad entries; return 1 if we made
    any changes to the list, and 0 otherwise */
 static int
