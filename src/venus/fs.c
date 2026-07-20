@@ -336,19 +336,34 @@ PruneList(struct aclu_AclEntry **ae, int dfs)
  * assume that the acl is AFS: for DFS, the user can always resort to
  * acl_edit, but for AFS there may be no other way out).
  */
-static struct aclu_Acl *
-EmptyAcl(char *astr)
+static int
+aclu_ParseEmptyAcl(const char *astr, struct aclu_Acl **a_acl)
 {
     struct aclu_Acl *tp;
     int junk;
 
     tp = calloc(sizeof(*tp), 1);
-    assert(tp);
+    if (tp == NULL) {
+	return ENOMEM;
+    }
+
     tp->nplus = tp->nminus = 0;
     tp->pluslist = tp->minuslist = 0;
     tp->dfs = 0;
     sscanf(astr, "%d dfs:%d %1024s", &junk, &tp->dfs, tp->cell);
     return tp;
+}
+
+static struct aclu_Acl *
+EmptyAcl(const char *astr)
+{
+    struct aclu_Acl *acl = NULL;
+    int code;
+
+    code = aclu_ParseEmptyAcl(astr, &acl);
+    opr_Assert(code == 0);
+    opr_Assert(acl != NULL);
+    return acl;
 }
 
 static struct aclu_Acl *
